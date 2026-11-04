@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let service = OCRService()
     private let shortcut = GlobalShortcut()
     private let toast = Toast()
+    private let resultPreview = ResultPreview()
     private var statusItem: NSStatusItem!
     private var stateItem: NSMenuItem!
     private var shortcutItem: NSMenuItem!
@@ -140,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let configuration: OCRConfiguration
         do { configuration = try self.configuration() }
         catch { showError("OCR 目录尚未准备好", detail: error.localizedDescription); return }
+        resultPreview.hide()
         guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else {
             explainScreenPermission()
             return
@@ -168,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSPasteboard.general.clearContents()
             if NSPasteboard.general.setString(text, forType: .string) {
                 stateItem.title = "文字已复制到剪贴板"
-                toast.show("文字已复制到剪贴板")
+                resultPreview.show(text)
             } else {
                 stateItem.title = "剪贴板写入失败"
                 showError("无法复制文字", detail: "系统剪贴板未接受识别结果，请重试。")
@@ -250,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         shortcut.unregister()
         toast.hide()
+        resultPreview.hide()
     }
 
     private func runSmoke(image: URL) {
