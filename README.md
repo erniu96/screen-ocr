@@ -1,4 +1,4 @@
-# wxocr-native
+# screen-ocr
 
 在 Apple Silicon Mac 上原生运行 OCR，识别截图中的中文、英文和数字。提供命令行、本机 HTTP API，以及可选的 **⌥S 框选截图 → 识别 → 复制到剪贴板** 快捷键。
 
@@ -54,13 +54,13 @@ uv --version
 ```sh
 mkdir -p "$HOME/Projects"
 cd "$HOME/Projects"
-git clone https://github.com/erniu96/wxocr-native.git
-cd wxocr-native
+git clone https://github.com/erniu96/screen-ocr.git
+cd screen-ocr
 uv python install 3.12
 uv sync --locked
 ```
 
-后续命令默认在 `wxocr-native` 项目目录中执行。路径可以包含空格，引用路径时请保留双引号。
+后续命令默认在 `screen-ocr` 项目目录中执行。路径可以包含空格，引用路径时请保留双引号。
 
 ### 4. 准备本机 OCR 运行时
 
@@ -89,7 +89,7 @@ uv run scripts/prepare_runtime.py --app "/完整路径/源应用.app"
 ### 5. 识别仓库里的示例图片
 
 ```sh
-uv run wxocr recognize tests/fixtures/english.png --text
+uv run screen-ocr recognize tests/fixtures/english.png --text
 ```
 
 终端应输出两行英文示例文字，与 `tests/fixtures/english.png` 中的内容一致。
@@ -97,7 +97,7 @@ uv run wxocr recognize tests/fixtures/english.png --text
 再试中文：
 
 ```sh
-uv run wxocr recognize tests/fixtures/chinese.png --text
+uv run screen-ocr recognize tests/fixtures/chinese.png --text
 ```
 
 能得到文字就说明安装成功。示例图片是生成的测试样本。
@@ -109,13 +109,13 @@ uv run wxocr recognize tests/fixtures/chinese.png --text
 把图片路径替换成你自己的文件：
 
 ```sh
-uv run wxocr recognize "$HOME/Desktop/screenshot.png" --text
+uv run screen-ocr recognize "$HOME/Desktop/screenshot.png" --text
 ```
 
 确认识别成功后，把结果复制到剪贴板：
 
 ```sh
-text=$(uv run wxocr recognize "$HOME/Desktop/screenshot.png" --text) && printf '%s' "$text" | pbcopy
+text=$(uv run screen-ocr recognize "$HOME/Desktop/screenshot.png" --text) && printf '%s' "$text" | pbcopy
 ```
 
 `--text` 按坐标恢复从上到下、同行从左到右的顺序，并拼接相邻片段。它保留引擎识别出的字符，不纠正错别字；复杂多栏、表格、旋转文字及精确空格仍可能需要人工检查。
@@ -123,7 +123,7 @@ text=$(uv run wxocr recognize "$HOME/Desktop/screenshot.png" --text) && printf '
 不加 `--text` 时输出 JSON，保留原始片段顺序、坐标和置信度：
 
 ```sh
-uv run wxocr recognize tests/fixtures/english.png
+uv run screen-ocr recognize tests/fixtures/english.png
 ```
 
 需要保存纯文本时可用 `--text-file output.txt`，输出 UTF-8 文件而不写入标准输出。它与 `--text` 二选一，并拒绝覆盖已有文件。截图模块也使用这一方式传递长文本。
@@ -131,9 +131,9 @@ uv run wxocr recognize tests/fixtures/english.png
 从项目目录以外调用时，同时指定项目和运行时的绝对路径：
 
 ```sh
-uv run --project "$HOME/Projects/wxocr-native" wxocr recognize \
+uv run --project "$HOME/Projects/screen-ocr" screen-ocr recognize \
   "$HOME/Desktop/screenshot.png" \
-  --runtime "$HOME/Projects/wxocr-native/.runtime" --text
+  --runtime "$HOME/Projects/screen-ocr/.runtime" --text
 ```
 
 ### ⌥S 截图识别并自动复制
@@ -146,16 +146,16 @@ uv run --project "$HOME/Projects/wxocr-native" wxocr recognize \
 
    ```sh
    mkdir -p "$HOME/.hammerspoon"
-   cp -i integrations/hammerspoon/wxocr.lua "$HOME/.hammerspoon/wxocr.lua"
+   cp -i integrations/hammerspoon/screen_ocr.lua "$HOME/.hammerspoon/screen_ocr.lua"
    command -v uv
    ```
 
 4. 记下最后一条命令输出的 uv **绝对路径**。点击菜单栏 Hammerspoon 图标 → **Open Config**，在现有 `init.lua` 末尾添加以下内容。保留原有配置，并把 `uvPath` 换成刚才的输出；如果项目放在别处，也修改 `projectDir`。
 
    ```lua
-   if wxocr then wxocr:stop() end
-   wxocr = require("wxocr").new({
-       projectDir = os.getenv("HOME") .. "/Projects/wxocr-native",
+   if screenOcr then screenOcr:stop() end
+   screenOcr = require("screen_ocr").new({
+       projectDir = os.getenv("HOME") .. "/Projects/screen-ocr",
        uvPath = "/替换为/command-v-uv/输出的绝对路径",
    }):start()
    ```
@@ -172,13 +172,13 @@ uv run --project "$HOME/Projects/wxocr-native" wxocr recognize \
 在项目目录启动服务，保持这个终端运行：
 
 ```sh
-uv run wxocr serve --port 5000
+uv run screen-ocr serve --port 5000
 ```
 
 另开终端，进入项目目录并发送一张图片：
 
 ```sh
-cd "$HOME/Projects/wxocr-native"
+cd "$HOME/Projects/screen-ocr"
 uv run python - <<'PY'
 import base64
 import json
@@ -212,9 +212,30 @@ PY
 
 HTTP 200 代表返回了引擎结果，调用方还应检查 `result.errcode`。`errcode == 0` 且 `ocr_response == []` 表示成功但没有文字。HTTP 返回的 `imgpath` 是已经清理的临时路径，不是可下载地址。
 
-API 的 `ocr_response` 保留原始顺序。需要和 `--text` 相同的拼接结果时，可在 Python 中调用 `wxocr_native.layout.reconstruct_text(result)["text"]`，见[架构与接口说明](docs/architecture.md)。
+API 的 `ocr_response` 保留原始顺序。需要和 `--text` 相同的拼接结果时，可在 Python 中调用 `screen_ocr.layout.reconstruct_text(result)["text"]`，见[架构与接口说明](docs/architecture.md)。
 
 按 **Ctrl+C** 停止服务。服务默认只监听 `127.0.0.1`，没有认证和 TLS，适用于本机调用。
+
+## 文件校验与模型信息
+
+运行时包含 12 个第三方文件：2 个动态库、9 个 `.xnet` 模型文件和 1 个字符表，合计约 85.10 MiB。完整文件名、大小与 SHA-256 见[文件清单](docs/runtime-files.md)，机器可读基线保存在 [runtime-baseline.json](src/screen_ocr/data/runtime-baseline.json)。安装器会校验全部 12 个文件。
+
+重新检查本机文件，或只读比较候选版本：
+
+```sh
+uv run scripts/inspect_runtime.py --runtime .runtime
+uv run scripts/inspect_runtime.py --dmg "/完整路径/候选版本.dmg" > candidate.json
+```
+
+比较结果逐项区分相同、变化、缺失；检查候选版本不会替换正在使用的运行时。哈希相同表示文件字节相同，哈希变化不代表必须更新或已经兼容。
+
+查看模型头部与字符表信息：
+
+```sh
+uv run scripts/inspect_models.py .runtime/Resources
+```
+
+当前 9 个模型均使用 XNET 格式版本 26，`metaData` 字段均为空。工具可读取已验证的头部、算子数量及首个算子名称，不是完整计算图或权重解析器。细节与证据见[模型格式说明](docs/model-format.md)。
 
 ## 常见问题
 
@@ -244,17 +265,34 @@ API 的 `ocr_response` 保留原始顺序。需要和 `--text` 相同的拼接�
 
 ## 更新与卸载
 
+从旧名称版本升级时，在原项目目录执行 `git remote set-url origin https://github.com/erniu96/screen-ocr.git`，然后更新代码和环境。命令现为 `screen-ocr`，Hammerspoon 模块现为 `screen_ocr.lua`；请替换旧配置，避免重复绑定。项目目录可以保留原路径，但 Hammerspoon 的 `projectDir` 必须填写实际位置。
+
+原生入口程序也已改名。可以复用已有运行时中的第三方文件，逐个校验后重新编译入口，无需重新下载安装包：
+
+```sh
+uv run scripts/prepare_runtime.py --runtime .runtime --output .runtime-next
+```
+
+确认命令成功且 `.runtime.backup` 不存在后，停止识别任务，将旧运行时备份并替换为新版本：
+
+```sh
+mv .runtime .runtime.backup
+mv .runtime-next .runtime
+```
+
+如果校验失败，保留旧运行时，按安装第 4 步准备固定版本的新运行时；不要跳过校验。更新 Hammerspoon 模块与配置后 Reload Config。
+
 更新项目代码：
 
 ```sh
-cd "$HOME/Projects/wxocr-native"
+cd "$HOME/Projects/screen-ocr"
 git pull --ff-only
 uv sync --locked
 ```
 
 使用 Hammerspoon 时，再执行一次模块复制并 **Reload Config**。代码更新不会自动替换 `.runtime`；只有发布说明明确要求时才重新准备运行时。
 
-停用快捷键：删除 `init.lua` 中本项目的配置段，点击 **Reload Config**，再删除 `~/.hammerspoon/wxocr.lua`。完整卸载时，先停止 HTTP 服务，再删除克隆的项目文件夹；其中的 `.venv` 和 `.runtime` 会一起删除。其他 Hammerspoon 配置无需删除。
+停用快捷键：删除 `init.lua` 中本项目的配置段，点击 **Reload Config**，再删除 `~/.hammerspoon/screen_ocr.lua`。完整卸载时，先停止 HTTP 服务，再删除克隆的项目文件夹；其中的 `.venv` 和 `.runtime` 会一起删除。其他 Hammerspoon 配置无需删除。
 
 ## 开发与测试
 
@@ -273,7 +311,7 @@ uv run --locked --with lupa==2.8 python -m unittest discover -s tests -v
 准备好运行时后，运行真实引擎集成测试：
 
 ```sh
-WXOCR_RUN_NATIVE=1 uv run python -m unittest discover -s tests -v
+SCREEN_OCR_RUN_NATIVE=1 uv run python -m unittest discover -s tests -v
 ```
 
 实现原理、输出字段和阅读顺序限制见 [架构说明](docs/architecture.md)。提交问题时请附上 macOS 版本、`uname -m`、命令及错误信息；图片请使用能够公开的最小复现样本。

@@ -10,7 +10,7 @@ import time
 
 from .protocol import decode_response, decode_support, encode_request
 
-BUNDLE_ID = b"dev.wxocr.native"
+BUNDLE_ID = b"dev.screenocr.native"
 
 
 class MojoSession:
@@ -95,7 +95,7 @@ class MojoSession:
         self.callback(self.env, kind, c.cast(callback, c.c_void_p))
 
     def open(self):
-        os.environ["WXOCR_RUNTIME"] = str(self.runtime / "Resources/libwxocr.dylib")
+        os.environ["SCREEN_OCR_RUNTIME"] = str(self.runtime / "Resources/libwxocr.dylib")
         self.configure(1000, c.c_char_p(BUNDLE_ID))
         self.initialize(0, None)
         self.env = self.create()
@@ -114,7 +114,7 @@ class MojoSession:
         self._register(8, c.CFUNCTYPE(None, c.c_void_p, c.c_int, c.c_void_p),
                        lambda data, length, _: self._fail(c.string_at(data, length).decode("utf-8", errors="replace")))
         self.param(self.env, 0, c.c_int(1))
-        self.param(self.env, 2, c.c_char_p(os.fsencode(self.runtime / "bin/wxocr-engine")))
+        self.param(self.env, 2, c.c_char_p(os.fsencode(self.runtime / "bin/screen-ocr-engine")))
         self.append(self.env, b"no-sandbox", b"")
         self.append(self.env, b"base-bundle-id", BUNDLE_ID)
         self.append(self.env, b"ocr-resource-root", os.fsencode(self.runtime / "Resources"))

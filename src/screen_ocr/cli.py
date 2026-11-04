@@ -80,7 +80,7 @@ def _run(argv: list[str] | None = None) -> int:
                 max_concurrent=args.max_concurrent,
                 request_timeout=30.0,
             )
-            print(f"wxocr-native listening on http://{args.host}:{server.server_port}", file=sys.stderr)
+            print(f"screen-ocr listening on http://{args.host}:{server.server_port}", file=sys.stderr)
             try:
                 server.serve_forever()
             except KeyboardInterrupt:
@@ -97,7 +97,7 @@ def _run(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except (NativeError, OSError, ValueError) as exc:
-        print(f"wxocr-native: {exc}", file=sys.stderr)
+        print(f"screen-ocr: {exc}", file=sys.stderr)
         return 1
 
 

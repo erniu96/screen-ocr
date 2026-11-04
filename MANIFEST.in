@@ -4,3 +4,4 @@ recursive-include native *.c
 recursive-include scripts *.py *.swift
 recursive-include integrations *.lua *.md
 recursive-include tests *.py *.lua *.json *.jsonl *.png
+recursive-include src/screen_ocr/data *.json

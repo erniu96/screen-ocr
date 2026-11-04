@@ -65,7 +65,7 @@ class NativeEngine:
         self._lock = threading.Lock()
         self._active: set[subprocess.Popen] = set()
         self._closed = False
-        for name in ("bin/wxocr-engine", "Frameworks/libmmmojo.dylib", "Resources/libwxocr.dylib", "runtime.json"):
+        for name in ("bin/screen-ocr-engine", "Frameworks/libmmmojo.dylib", "Resources/libwxocr.dylib", "runtime.json"):
             if not (self.runtime / name).is_file():
                 raise NativeError(f"Missing runtime file {name}; run scripts/prepare_runtime.py first")
         try:
@@ -87,12 +87,12 @@ class NativeEngine:
         image = Path(image).resolve(strict=True)
         if not image.is_file():
             raise ValueError("image must be a regular file")
-        with tempfile.TemporaryDirectory(prefix="wxocr-worker-") as temp:
+        with tempfile.TemporaryDirectory(prefix="screen-ocr-worker-") as temp:
             directory = Path(temp)
             result_path = directory / "result.json"
             metrics_path = directory / "metrics.json"
             with (directory / "worker.log").open("wb") as log:
-                command = [sys.executable, "-m", "wxocr_native.worker", "--runtime", str(self.runtime),
+                command = [sys.executable, "-m", "screen_ocr.worker", "--runtime", str(self.runtime),
                            "--image", str(image), "--output", str(result_path), "--timeout", str(self.timeout),
                            "--metrics-output", str(metrics_path)]
                 with self._lock:

@@ -1,4 +1,4 @@
--- Optional screenshot-to-clipboard integration for wxocr-native.
+-- Optional screenshot-to-clipboard integration for screen-ocr.
 -- Configure absolute paths explicitly; tasks never invoke a shell.
 local module = {}
 local OCR = {}
@@ -11,7 +11,7 @@ local function absolutePath(value, name)
 end
 
 function module.new(config)
-    assert(type(config) == "table", "wxocr.new requires projectDir and uvPath")
+    assert(type(config) == "table", "screen_ocr.new requires projectDir and uvPath")
     return setmetatable({
         projectDir = absolutePath(config.projectDir, "projectDir"),
         uvPath = absolutePath(config.uvPath, "uvPath"),
@@ -44,18 +44,18 @@ end
 function OCR:_fail(request, message, detail)
     if self:_isCurrent(request) then
         self:_show(message)
-        print("[wxocr] " .. detail)
+        print("[screen-ocr] " .. detail)
     end
     self:_finish(request)
 end
 
 function OCR:_recognize(request)
     if not self:_isCurrent(request) then self:_finish(request); return end
-    self:_show("wxocr 正在识别…")
+    self:_show("screen-ocr 正在识别…")
     request.textPath = request.path .. ".txt"
     local arguments = {
         "run", "--offline", "--locked", "--no-sync", "--project", self.projectDir,
-        "wxocr", "recognize", request.path, "--runtime", self.projectDir .. "/.runtime",
+        "screen-ocr", "recognize", request.path, "--runtime", self.projectDir .. "/.runtime",
         "--text-file", request.textPath,
     }
     request.ocrTask = hs.task.new(self.uvPath, function(exitCode, stdout, stderr)
@@ -63,7 +63,7 @@ function OCR:_recognize(request)
         if request.finished then return end
         if not self:_isCurrent(request) then self:_finish(request); return end
         if exitCode ~= 0 then
-            self:_fail(request, "wxocr 识别失败；请查看 Hammerspoon Console",
+            self:_fail(request, "screen-ocr 识别失败；请查看 Hammerspoon Console",
                 string.format("OCR exited %d: %s", exitCode, stderr))
             return
         end
@@ -71,42 +71,42 @@ function OCR:_recognize(request)
         -- in hs.task. Preserve recognized spaces and line breaks exactly.
         local file, openError = io.open(request.textPath, "rb")
         if not file then
-            self:_fail(request, "无法读取 wxocr 结果", tostring(openError))
+            self:_fail(request, "无法读取 screen-ocr 结果", tostring(openError))
             return
         end
         local text, readError = file:read("*a")
         file:close()
         if not text then
-            self:_fail(request, "无法读取 wxocr 结果", tostring(readError))
+            self:_fail(request, "无法读取 screen-ocr 结果", tostring(readError))
             return
         end
         if text:match("^%s*$") then
             self:_show("未识别到文字，剪贴板保持原样")
         elseif hs.pasteboard.setContents(text) then
-            self:_show("wxocr 已复制到剪贴板")
+            self:_show("screen-ocr 已复制到剪贴板")
         else
-            self:_show("wxocr 无法写入剪贴板")
-            print("[wxocr] Failed to write OCR text to clipboard")
+            self:_show("screen-ocr 无法写入剪贴板")
+            print("[screen-ocr] Failed to write OCR text to clipboard")
         end
         self:_finish(request)
     end, arguments)
     if not request.ocrTask then
-        self:_fail(request, "无法启动 wxocr", "hs.task.new failed for configured uvPath")
+        self:_fail(request, "无法启动 screen-ocr", "hs.task.new failed for configured uvPath")
         return
     end
     request.ocrTask:setWorkingDirectory(self.projectDir)
     if not request.ocrTask:start() then
         request.ocrTask = nil
-        self:_fail(request, "无法启动 wxocr", "uv task failed to start; check uvPath and project installation")
+        self:_fail(request, "无法启动 screen-ocr", "uv task failed to start; check uvPath and project installation")
         return
     end
 end
 
 function OCR:capture()
     if self._stopped then return false end
-    if self._active then self:_show("wxocr 正在处理上一张截图"); return false end
+    if self._active then self:_show("screen-ocr 正在处理上一张截图"); return false end
     self:_closeAlert()
-    local request = {path = hs.fs.temporaryDirectory() .. "wxocr-" .. hs.host.uuid() .. ".png"}
+    local request = {path = hs.fs.temporaryDirectory() .. "screen-ocr-" .. hs.host.uuid() .. ".png"}
     self._active = request
     request.captureTask = hs.task.new("/usr/sbin/screencapture", function(exitCode, _, stderr)
         request.captureTask = nil
@@ -137,17 +137,17 @@ function OCR:start()
     if self._hotkey then return self end
     assert(hs.fs.attributes(self.projectDir, "mode") == "directory", "projectDir is not a directory")
     assert(hs.fs.attributes(self.uvPath, "mode") == "file", "uvPath is not a file; run command -v uv")
-    assert(hs.fs.attributes(self.projectDir .. "/.venv/bin/wxocr", "mode") == "file",
-        "wxocr environment missing; run uv sync --locked in projectDir")
+    assert(hs.fs.attributes(self.projectDir .. "/.venv/bin/screen-ocr", "mode") == "file",
+        "screen-ocr environment missing; run uv sync --locked in projectDir")
     assert(hs.fs.attributes(self.projectDir .. "/.runtime/runtime.json", "mode") == "file",
-        "wxocr runtime missing; run uv run scripts/prepare_runtime.py --download in projectDir")
+        "screen-ocr runtime missing; run uv run scripts/prepare_runtime.py --download in projectDir")
     self._hotkey = assert(hs.hotkey.bind({"alt"}, "s", function() self:capture() end), "cannot bind Option+S")
     self._stopped = false
     local previous = hs.shutdownCallback
     self._previousShutdown = previous
     self._shutdown = function()
         local ok, error = pcall(function() self:stop() end)
-        if not ok then print("[wxocr] Shutdown cleanup failed: " .. tostring(error)) end
+        if not ok then print("[screen-ocr] Shutdown cleanup failed: " .. tostring(error)) end
         if type(previous) == "function" then previous() end
     end
     hs.shutdownCallback = self._shutdown

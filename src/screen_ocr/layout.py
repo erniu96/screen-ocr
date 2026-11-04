@@ -1,4 +1,4 @@
-"""Reconstruct visual text rows from the verified wxocr rectangle contract.
+"""Reconstruct visual text rows from the verified OCR rectangle contract.
 
 This is a plain-text presentation layer, not a protocol decoder. It never edits
 recognised letters, guesses unknown fields, or changes the original result.

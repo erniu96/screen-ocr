@@ -1,6 +1,6 @@
 """Opt-in tests against the real, locally prepared macOS WeChat runtime.
 
-Run with WXOCR_RUN_NATIVE=1 uv run python -m unittest discover -s tests -v.
+Run with SCREEN_OCR_RUN_NATIVE=1 uv run python -m unittest discover -s tests -v.
 The fixture images are generated samples, with no user data.
 """
 
@@ -16,7 +16,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from wxocr_native.engine import EngineTimeout, NativeEngine, NativeError
+from screen_ocr.engine import EngineTimeout, NativeEngine, NativeError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,14 +28,14 @@ EXPECTED_LINES = ["WeChat OCR native test", "Invoice 12345 ABC xyz"]
 class ProcessCleanupTests(unittest.TestCase):
     def test_permission_failure_with_live_process_is_not_ignored(self):
         worker = Mock(pid=123)
-        with patch("wxocr_native.engine.os.killpg", side_effect=PermissionError("denied")):
-            with patch("wxocr_native.engine.subprocess.check_output", return_value="  123 S\n"):
+        with patch("screen_ocr.engine.os.killpg", side_effect=PermissionError("denied")):
+            with patch("screen_ocr.engine.subprocess.check_output", return_value="  123 S\n"):
                 with self.assertRaises(PermissionError):
                     NativeEngine._terminate(worker)
         worker.wait.assert_not_called()
 
 
-@unittest.skipUnless(os.environ.get("WXOCR_RUN_NATIVE") == "1", "set WXOCR_RUN_NATIVE=1 for native integration")
+@unittest.skipUnless(os.environ.get("SCREEN_OCR_RUN_NATIVE") == "1", "set SCREEN_OCR_RUN_NATIVE=1 for native integration")
 class NativeIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.engine = NativeEngine(RUNTIME)
@@ -145,7 +145,7 @@ class NativeIntegrationTests(unittest.TestCase):
             return worker
 
         self.engine.timeout = 0.001
-        with patch("wxocr_native.engine.subprocess.Popen", side_effect=record_launch):
+        with patch("screen_ocr.engine.subprocess.Popen", side_effect=record_launch):
             with self.assertRaises(EngineTimeout):
                 self.engine.recognize(FIXTURES / "english.png")
         self.assertEqual(len(workers), 1)
@@ -168,7 +168,7 @@ class NativeIntegrationTests(unittest.TestCase):
             spawned.set()
             return worker
 
-        with patch("wxocr_native.engine.subprocess.Popen", side_effect=suspended_launch):
+        with patch("screen_ocr.engine.subprocess.Popen", side_effect=suspended_launch):
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(self.engine.recognize, FIXTURES / "english.png")
                 self.assertTrue(spawned.wait(5), "worker was not spawned")

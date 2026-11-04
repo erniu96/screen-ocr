@@ -9,8 +9,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
-from wxocr_native import cli
-from wxocr_native.layout import LayoutError, reconstruct_text
+from screen_ocr import cli
+from screen_ocr.layout import LayoutError, reconstruct_text
 
 
 def box(text, left, top, right, bottom):

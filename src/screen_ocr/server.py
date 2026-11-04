@@ -1,4 +1,4 @@
-"""A bounded local HTTP adapter for the observed wxocr image contract."""
+"""A bounded local HTTP adapter for the observed OCR image contract."""
 from __future__ import annotations
 
 import base64
@@ -41,7 +41,7 @@ class OCRHTTPServer(ThreadingHTTPServer):
 
 class OCRRequestHandler(BaseHTTPRequestHandler):
     server: OCRHTTPServer
-    server_version = "wxocr-native"
+    server_version = "screen-ocr"
     sys_version = ""
     # One request per connection bounds idle connection lifetime and avoids
     # reusing connections after rejecting an unread body.
@@ -129,7 +129,7 @@ class OCRRequestHandler(BaseHTTPRequestHandler):
         except (ValueError, binascii.Error):
             self._json(400, {"error": "image must contain valid bare base64"})
             return
-        with tempfile.TemporaryDirectory(prefix="wxocr-native-") as folder:
+        with tempfile.TemporaryDirectory(prefix="screen-ocr-") as folder:
             image_path = Path(folder) / "input.png"
             image_path.write_bytes(image_data)
             result = self.server.engine.recognize(image_path)

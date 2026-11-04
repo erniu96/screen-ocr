@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from wxocr_native import cli
+from screen_ocr import cli
 
 
 class CLIOutputTests(unittest.TestCase):

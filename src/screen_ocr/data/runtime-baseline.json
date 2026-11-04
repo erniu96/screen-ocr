@@ -1,0 +1,82 @@
+{
+  "format_version": 1,
+  "source_version": "4.2.0",
+  "source_build": "270352",
+  "architecture": "arm64",
+  "source_url": "https://dldir1v6.qq.com/weixin/Universal/Mac/WeChatMac_4.2.0.dmg",
+  "source_dmg_sha256": "077b99658e2d2083458a181f6de21ac9442fef8479635e367afdb0e4b1be5f22",
+  "files": [
+    {
+      "path": "Frameworks/libmmmojo.dylib",
+      "category": "library",
+      "bytes": 3815488,
+      "sha256": "1fd92398807aa17ccf4e6c0f9cf0a96e0202e3b7a49104169a188e4c515c6425"
+    },
+    {
+      "path": "Resources/libwxocr.dylib",
+      "category": "library",
+      "bytes": 58027936,
+      "sha256": "a0056c2a1cbf7c8017301d60e3bb35f07611073fe99a41ca6d62ea15657cc204"
+    },
+    {
+      "path": "Resources/text_det_fp16_v2.xnet",
+      "category": "model",
+      "bytes": 1447764,
+      "sha256": "3d24e46ad2b7103370656043965548acfb59a7d33c4ea7689abd5f4cdfdf0279"
+    },
+    {
+      "path": "Resources/text_rec_zh13562_fp16_v2.xnet",
+      "category": "model",
+      "bytes": 8354384,
+      "sha256": "fc5c638d5e4d1eb7399e3be89a52f37a527631a41c9869364a350f6ae4cf20b8"
+    },
+    {
+      "path": "Resources/charset_zh13562.txt",
+      "category": "charset",
+      "bytes": 54258,
+      "sha256": "e61c2b740d4f09263cdd3495825c1b17d69bd073e4bf99272ac2c075e4c5bbc8"
+    },
+    {
+      "path": "Resources/paragraph_det_fp16_v2.xnet",
+      "category": "model",
+      "bytes": 2937632,
+      "sha256": "055fb665b8d728d869ff555969441175f78929cace3647a4ba01cb71a4be8555"
+    },
+    {
+      "path": "Resources/QBarDetV1.7.0.26.xnet",
+      "category": "model",
+      "bytes": 413819,
+      "sha256": "4bebaeb0fa34a020522768fa649a45e28e3b768d7c9ca0458a4fe4be7d4b2296"
+    },
+    {
+      "path": "Resources/DeepSR_REPSR_R_M4C16_Flip_ep24.xnet",
+      "category": "model",
+      "bytes": 45388,
+      "sha256": "529969c2d81b62cf1d8fcac2a1d67fcf08771c810e05bfb3006990746073f65d"
+    },
+    {
+      "path": "Resources/QBarSegV1.1.0.26.xnet",
+      "category": "model",
+      "bytes": 224449,
+      "sha256": "30a536fa8b35d60bf39ec780259f37b64da8393de54a50fa7d6c71cea58b053d"
+    },
+    {
+      "path": "Resources/FPMMFG1V1.2.0.26.xnet",
+      "category": "model",
+      "bytes": 1604697,
+      "sha256": "a9e9a990ca68872baba7a37a9bf1cadabb9c54b84c9cb43ce19634619f744678"
+    },
+    {
+      "path": "Resources/FPMMFG2V1.3.1.26.xnet",
+      "category": "model",
+      "bytes": 6952285,
+      "sha256": "6e998da766ef2a62b9f114ead019cdff3df673f6c951c531a58c8e568d1f0c21"
+    },
+    {
+      "path": "Resources/PrivacyDetectV8.0.26.xnet",
+      "category": "model",
+      "bytes": 5351702,
+      "sha256": "104793c78465c93bcfe4165cbfa25210015d2870b14614be58fd338694224b8e"
+    }
+  ]
+}

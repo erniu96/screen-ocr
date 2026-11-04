@@ -3,7 +3,7 @@ from pathlib import Path
 import struct
 import unittest
 
-from wxocr_native.protocol import (
+from screen_ocr.protocol import (
     ProtocolError,
     decode_response,
     decode_support,

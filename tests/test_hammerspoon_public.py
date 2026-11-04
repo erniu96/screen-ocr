@@ -17,7 +17,7 @@ class HammerspoonTests(unittest.TestCase):
     def test_screenshot_clipboard_lifecycle(self):
         runtime = LuaRuntime(unpack_returned_tuples=True)
         runtime.globals().TEST_MODULE_PATH = str(
-            Path(__file__).resolve().parents[1] / "integrations/hammerspoon/wxocr.lua"
+            Path(__file__).resolve().parents[1] / "integrations/hammerspoon/screen_ocr.lua"
         )
         result = runtime.execute(Path(__file__).with_suffix(".lua").read_text())
         self.assertEqual(result["passed"], 18)

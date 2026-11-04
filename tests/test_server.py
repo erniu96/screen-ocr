@@ -10,9 +10,9 @@ import threading
 import unittest
 from unittest.mock import Mock, patch
 
-from wxocr_native.cli import main
-from wxocr_native.engine import EngineTimeout, NativeError
-from wxocr_native.server import MAX_BODY_BYTES, create_server
+from screen_ocr.cli import main
+from screen_ocr.engine import EngineTimeout, NativeError
+from screen_ocr.server import MAX_BODY_BYTES, create_server
 
 
 class FakeEngine:
@@ -161,8 +161,8 @@ class CLIShutdownTests(unittest.TestCase):
         server = Mock(server_port=5000)
         server.serve_forever.side_effect = KeyboardInterrupt
         server.server_close.side_effect = lambda: events.append("server closed")
-        with patch("wxocr_native.cli.NativeEngine", return_value=engine), \
-             patch("wxocr_native.cli.create_server", return_value=server), \
+        with patch("screen_ocr.cli.NativeEngine", return_value=engine), \
+             patch("screen_ocr.cli.create_server", return_value=server), \
              redirect_stderr(io.StringIO()):
             status = main(["serve"])
         self.assertEqual(status, 0)
@@ -170,8 +170,8 @@ class CLIShutdownTests(unittest.TestCase):
 
     def test_listening_failure_still_closes_engine(self) -> None:
         engine = Mock()
-        with patch("wxocr_native.cli.NativeEngine", return_value=engine), \
-             patch("wxocr_native.cli.create_server", side_effect=OSError("address already in use")), \
+        with patch("screen_ocr.cli.NativeEngine", return_value=engine), \
+             patch("screen_ocr.cli.create_server", side_effect=OSError("address already in use")), \
              redirect_stderr(io.StringIO()):
             status = main(["serve"])
         self.assertEqual(status, 1)

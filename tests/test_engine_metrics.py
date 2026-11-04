@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import unittest
 
-from wxocr_native.engine import NativeEngine, NativeError, RecognitionOutcome, _validate_worker_timings
+from screen_ocr.engine import NativeEngine, NativeError, RecognitionOutcome, _validate_worker_timings
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +36,7 @@ class TimingContractTests(unittest.TestCase):
                     _validate_worker_timings(record)
 
 
-@unittest.skipUnless(os.environ.get("WXOCR_RUN_NATIVE") == "1", "set WXOCR_RUN_NATIVE=1 for native integration")
+@unittest.skipUnless(os.environ.get("SCREEN_OCR_RUN_NATIVE") == "1", "set SCREEN_OCR_RUN_NATIVE=1 for native integration")
 class NativeTimingTests(unittest.TestCase):
     def test_real_engine_timings_leave_ocr_contract_unchanged(self):
         engine = NativeEngine(ROOT / ".runtime")

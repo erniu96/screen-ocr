@@ -9,7 +9,7 @@ local function fresh(start)
         files = {}, contents = {}, uuid = 0, copyOK = true, previousCalls = 0}
     state.files[project] = "directory"
     state.files[uv] = "file"
-    state.files[project .. "/.venv/bin/wxocr"] = "file"
+    state.files[project .. "/.venv/bin/screen-ocr"] = "file"
     state.files[project .. "/.runtime/runtime.json"] = "file"
     local fake = {
         shutdownCallback = function() state.previousCalls = state.previousCalls + 1 end,
@@ -114,7 +114,7 @@ run("Option+S uses the explicit project and uv without shell parsing", function(
     local task = s.tasks[2]
     assert(task.path == uv and task.directory == project)
     assert(table.concat(task.args, "|") == table.concat({"run", "--offline", "--locked", "--no-sync",
-        "--project", project, "wxocr", "recognize", capture.args[3], "--runtime", project .. "/.runtime",
+        "--project", project, "screen-ocr", "recognize", capture.args[3], "--runtime", project .. "/.runtime",
         "--text-file", capture.args[3] .. ".txt"}, "|"))
 end)
 
@@ -237,7 +237,7 @@ end)
 
 run("Invalid or missing paths fail before binding", function()
     local s = fresh(false)
-    assert(not pcall(s.module.new, {projectDir = "~/Projects/wxocr", uvPath = uv}))
+    assert(not pcall(s.module.new, {projectDir = "~/Projects/screen-ocr", uvPath = uv}))
     assert(not pcall(s.module.new, {projectDir = project, uvPath = "uv"}))
     s.files[project .. "/.runtime/runtime.json"] = nil
     assert(not pcall(function() s.ocr:start() end) and #s.bindings == 0)

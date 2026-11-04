@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wxocr-native"
+name = "screen-ocr"
 version = "0.1.0"
 description = "Local native OCR for macOS Apple Silicon with CLI, HTTP API and screenshot shortcuts"
 readme = "README.md"
@@ -13,11 +13,14 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.urls]
-Repository = "https://github.com/erniu96/wxocr-native"
-Issues = "https://github.com/erniu96/wxocr-native/issues"
+Repository = "https://github.com/erniu96/screen-ocr"
+Issues = "https://github.com/erniu96/screen-ocr/issues"
 
 [project.scripts]
-wxocr = "wxocr_native.cli:main"
+screen-ocr = "screen_ocr.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+screen_ocr = ["data/*.json"]

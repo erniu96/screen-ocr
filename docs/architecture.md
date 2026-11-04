@@ -1,6 +1,6 @@
 # 架构与接口
 
-wxocr-native 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
+screen-ocr 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
 
 ## 请求流程
 
@@ -26,13 +26,13 @@ flowchart LR
 | --- | --- |
 | `scripts/prepare_runtime.py` | 校验固定安装包和库，提取文件，编译入口程序，生成运行时清单 |
 | `native/ocr_helper.c` | 加载指定的 OCR 动态库，调用已确认的原生入口 |
-| `src/wxocr_native/engine.py` | 进程隔离、整体超时、取消、回收及耗时测量 |
-| `src/wxocr_native/worker.py` | 绑定已验证的 Mojo C ABI，管理回调与一次识别的生命周期 |
-| `src/wxocr_native/protocol.py` | 编解码已确认的 protobuf 字段，校验类型和边界 |
-| `src/wxocr_native/layout.py` | 根据已知矩形字段排序和拼接片段 |
-| `src/wxocr_native/server.py` | 有容量限制的本机 HTTP 接口 |
-| `src/wxocr_native/cli.py` | 命令行参数、结果输出和服务生命周期 |
-| `integrations/hammerspoon/wxocr.lua` | 快捷键、截图、异步调用 CLI、复制与临时文件清理 |
+| `src/screen_ocr/engine.py` | 进程隔离、整体超时、取消、回收及耗时测量 |
+| `src/screen_ocr/worker.py` | 绑定已验证的 Mojo C ABI，管理回调与一次识别的生命周期 |
+| `src/screen_ocr/protocol.py` | 编解码已确认的 protobuf 字段，校验类型和边界 |
+| `src/screen_ocr/layout.py` | 根据已知矩形字段排序和拼接片段 |
+| `src/screen_ocr/server.py` | 有容量限制的本机 HTTP 接口 |
+| `src/screen_ocr/cli.py` | 命令行参数、结果输出和服务生命周期 |
+| `integrations/hammerspoon/screen_ocr.lua` | 快捷键、截图、异步调用 CLI、复制与临时文件清理 |
 
 ## 固定运行时
 
@@ -69,8 +69,8 @@ flowchart LR
 ```sh
 uv run python - <<'PY'
 from pathlib import Path
-from wxocr_native.engine import NativeEngine
-from wxocr_native.layout import reconstruct_text
+from screen_ocr.engine import NativeEngine
+from screen_ocr.layout import reconstruct_text
 
 engine = NativeEngine(Path(".runtime"), timeout=90)
 try:
