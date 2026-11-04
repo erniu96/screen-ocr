@@ -1,6 +1,6 @@
 # 架构与接口
 
-wxocr-native 在 macOS ARM64 上加载微信自带的 OCR 运行时。Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
+wxocr-native 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
 
 ## 请求流程
 
@@ -25,7 +25,7 @@ flowchart LR
 | 文件 | 职责 |
 | --- | --- |
 | `scripts/prepare_runtime.py` | 校验固定安装包和库，提取文件，编译入口程序，生成运行时清单 |
-| `native/ocr_helper.c` | 加载指定的 OCR 动态库，调用 `WeChatMain` |
+| `native/ocr_helper.c` | 加载指定的 OCR 动态库，调用已确认的原生入口 |
 | `src/wxocr_native/engine.py` | 进程隔离、整体超时、取消、回收及耗时测量 |
 | `src/wxocr_native/worker.py` | 绑定已验证的 Mojo C ABI，管理回调与一次识别的生命周期 |
 | `src/wxocr_native/protocol.py` | 编解码已确认的 protobuf 字段，校验类型和边界 |
@@ -36,7 +36,7 @@ flowchart LR
 
 ## 固定运行时
 
-当前支持微信 macOS **4.2.0，build 270352，ARM64**。准备脚本从官方 DMG 或用户提供的匹配应用中提取：
+当前支持的源应用版本为 **4.2.0，build 270352，ARM64**，具体来源见[第三方来源说明](THIRD_PARTY_NOTICES.md)。准备脚本从上游官方 DMG 或用户提供的匹配应用中提取：
 
 - `Frameworks/libmmmojo.dylib`：进程间通信接口。
 - `Resources/libwxocr.dylib`：实际 OCR 引擎。
@@ -46,7 +46,7 @@ flowchart LR
 
 下载地址、DMG 与动态库 SHA-256 固定在准备脚本中。准备阶段验证安装包、应用版本和库，并为输出文件生成 `runtime.json` 清单。该清单记录来源与哈希，不代表运行时目录受到防篡改保护；请使用自己准备的本地运行时。
 
-本仓库不分发微信二进制或模型。这里的“native”指加载 macOS ARM64 原生引擎，不表示 OCR 模型由本项目训练或以开源许可证提供。
+本仓库不分发第三方二进制或模型。这里的“native”指加载 macOS ARM64 原生引擎，不表示 OCR 模型由本项目训练或以开源许可证提供。
 
 ## Mojo 与 protobuf 契约
 
@@ -58,7 +58,7 @@ flowchart LR
 | `10010` | 携带任务编号和本地图片路径的识别请求 |
 | `10011` | 识别响应 |
 
-字段编号的研究参考为 [swigger/wechat-ocr 的固定提交](https://github.com/swigger/wechat-ocr/tree/e32d4af10d8045f8613078bac2df442662c76b03/pb)。本项目使用自行实现的编解码器，不依赖生成的 protobuf 模块。
+字段编号的研究参考及固定提交见[第三方来源说明](THIRD_PARTY_NOTICES.md#协议研究参考)。本项目使用自行实现的编解码器，不依赖生成的 protobuf 模块。
 
 仅处理已确认的字段。未知 protobuf 字段按 wire type 跳过；不会从数值、候选名称或相似字段推测其含义。已知字段的错误 wire type、截断数据、无效 UTF-8 和数值溢出会被拒绝。
 

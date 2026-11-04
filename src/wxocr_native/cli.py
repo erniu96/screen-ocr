@@ -1,4 +1,4 @@
-"""Command line entry point for macOS-native WeChat OCR."""
+"""Command line entry point for native OCR on macOS Apple Silicon."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +25,7 @@ def _positive_timeout(value: str) -> float:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run WeChat OCR natively on macOS")
+    parser = argparse.ArgumentParser(description="Run native OCR locally on macOS Apple Silicon")
     commands = parser.add_subparsers(dest="command", required=True)
     recognize = commands.add_parser("recognize", help="Recognize a local image")
     recognize.add_argument("image", type=Path)

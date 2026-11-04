@@ -1,4 +1,4 @@
-"""The observed WeChat 4 OCR protobuf messages, without a protobuf dependency.
+"""The observed OCR runtime protobuf messages, without a protobuf dependency.
 
 Field numbers and request flags follow swigger/wechat-ocr's
 pb/ocr_wx4.proto and pb/ocr_common.proto at commit

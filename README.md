@@ -1,18 +1,18 @@
 # wxocr-native
 
-在 Apple Silicon Mac 上直接调用微信自带的 OCR 引擎，识别截图中的中文、英文和数字。提供命令行、本机 HTTP API，以及可选的 **⌥S 框选截图 → 识别 → 复制到剪贴板** 快捷键。
+在 Apple Silicon Mac 上原生运行 OCR，识别截图中的中文、英文和数字。提供命令行、本机 HTTP API，以及可选的 **⌥S 框选截图 → 识别 → 复制到剪贴板** 快捷键。
 
-识别在本机完成，无需运行 Linux 容器，无需安装或登录微信。项目使用微信 macOS 版的原生 ARM64 动态库和模型；仓库提供调用代码，不包含腾讯的动态库、模型或安装包。首次安装时，准备脚本从腾讯官方安装包提取所需文件。
+识别在本机完成，无需运行 Linux 容器。项目调用第三方 macOS ARM64 动态库和模型；仓库提供调用代码，不包含第三方动态库、模型或安装包。首次安装时，准备脚本从固定版本的上游官方安装包提取所需文件，具体来源与权属见[第三方来源说明](docs/THIRD_PARTY_NOTICES.md)。
 
 ## 使用条件
 
 - **Apple Silicon Mac**（M 系列芯片）。Intel Mac 和通过 Rosetta 运行的 x86_64 Python 不受支持。
 - Xcode Command Line Tools，用于编译一个很小的原生入口程序。
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)，用于管理 Python 和项目环境。
-- 首次安装可联网，预留约 2 GB 临时空间。微信安装包约 519 MiB，提取后的运行时约 85 MiB。
+- 首次安装可联网，预留约 2 GB 临时空间。源安装包约 519 MiB，提取后的运行时约 85 MiB。
 - 截图快捷键另外需要 [Hammerspoon](https://www.hammerspoon.org/go/)。仅识别已有图片或使用 API 时不需要它。
 
-当前实测环境为 macOS 27.0.1、ARM64、Python 3.12。其他 macOS 版本尚未完整验证；项目目前只接受 **微信 4.2.0，build 270352** 的运行时。
+当前实测环境为 macOS 27.0.1、ARM64、Python 3.12。其他 macOS 版本尚未完整验证；项目目前只接受 **源应用 4.2.0，build 270352** 的运行时。
 
 ## 一步一步安装
 
@@ -68,20 +68,20 @@ uv sync --locked
 uv run scripts/prepare_runtime.py --download
 ```
 
-这一步会下载固定版本的腾讯官方 DMG，校验 SHA-256，临时只读挂载，提取 OCR 库和模型，并编译 ARM64 入口程序。完成后会看到 `Prepared native runtime: .../.runtime`。下载和挂载的临时文件会清理，`.runtime` 留在项目目录中。
+这一步会下载固定版本的上游官方 DMG，校验 SHA-256，临时只读挂载，提取 OCR 库和模型，并编译 ARM64 入口程序。完成后会看到 `Prepared native runtime: .../.runtime`。下载和挂载的临时文件会清理，`.runtime` 留在项目目录中。
 
-**不需要把微信拖入「应用程序」，也不需要启动或登录微信。** 此后直接识别已有图片，无需每次下载。
+**不需要安装、启动或登录源应用。** 此后直接识别已有图片，无需每次下载。
 
-如果已有同一版本的官方安装包，可以改用：
+如果已有[第三方来源说明](docs/THIRD_PARTY_NOTICES.md)中列出的同一版本官方安装包，可以改用以下命令，并替换为文件的实际绝对路径：
 
 ```sh
-uv run scripts/prepare_runtime.py --dmg "$HOME/Downloads/WeChatMac_4.2.0.dmg"
+uv run scripts/prepare_runtime.py --dmg "/完整路径/安装包.dmg"
 ```
 
-也可以从已经安装的匹配版本提取，脚本不会修改该应用：
+也可以从已经安装的匹配版本提取，脚本不会修改该应用。将路径替换为对应的应用包：
 
 ```sh
-uv run scripts/prepare_runtime.py --app /Applications/WeChat.app
+uv run scripts/prepare_runtime.py --app "/完整路径/源应用.app"
 ```
 
 版本、build 或动态库校验不匹配时脚本会拒绝继续；不要用其他版本文件混合替换 `.runtime`。
@@ -92,12 +92,7 @@ uv run scripts/prepare_runtime.py --app /Applications/WeChat.app
 uv run wxocr recognize tests/fixtures/english.png --text
 ```
 
-预期输出：
-
-```text
-WeChat OCR native test
-Invoice 12345 ABC xyz
-```
+终端应输出两行英文示例文字，与 `tests/fixtures/english.png` 中的内容一致。
 
 再试中文：
 
@@ -237,7 +232,7 @@ API 的 `ocr_response` 保留原始顺序。需要和 `--text` 相同的拼接�
 
 **提示版本不匹配或 checksum 不一致？**
 
-目前只验证了微信 4.2.0 build 270352。优先使用 `--download` 获取固定版本；下载中断时重试。若腾讯替换或移除了该安装包，请提交 issue，不要跳过校验或手动换入未知库。
+目前只验证了源应用 4.2.0 build 270352。优先使用 `--download` 获取固定版本；下载中断时重试。若上游替换或移除了该安装包，请提交 issue，不要跳过校验或手动换入未知库。
 
 **⌥S 没反应、截图失败或屏幕全黑？**
 
@@ -285,6 +280,6 @@ WXOCR_RUN_NATIVE=1 uv run python -m unittest discover -s tests -v
 
 ## 许可与致谢
 
-本项目自行实现的代码见 [LICENSE](LICENSE)。腾讯的微信程序、动态库和模型不属于本项目的开源许可范围，需遵守其各自适用条款。本项目与腾讯无隶属关系，不承诺兼容未验证的微信版本。
+本项目自行实现的代码见 [LICENSE](LICENSE)。第三方程序、动态库和模型不属于本项目的开源许可范围，需遵守其各自适用条款。本项目与上游厂商无隶属关系，不承诺兼容未验证的运行时版本。
 
-协议研究参考 [swigger/wechat-ocr](https://github.com/swigger/wechat-ocr)，HTTP 调用形式参考 [golangboyme/wxocr](https://hub.docker.com/r/golangboyme/wxocr)。第三方来源和边界见 [第三方来源说明](docs/THIRD_PARTY_NOTICES.md)。
+协议研究参考、接口行为来源及相关权属边界见[第三方来源说明](docs/THIRD_PARTY_NOTICES.md)。

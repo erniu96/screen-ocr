@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wxocr-native"
 version = "0.1.0"
-description = "Run WeChat's macOS OCR engine locally through its verified Mojo protocol"
+description = "Local native OCR for macOS Apple Silicon with CLI, HTTP API and screenshot shortcuts"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "docs/THIRD_PARTY_NOTICES.md"]

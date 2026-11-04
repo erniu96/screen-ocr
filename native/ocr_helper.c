@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* WeChat 4.2.0 arm64: WeChatMain forwards argc/argv to InitializeMMMojo.
+/* Runtime 4.2.0 arm64: its entry point forwards argc/argv to InitializeMMMojo.
  * Keep this helper in a separate process: the engine owns its event loop. */
 int main(int argc, char **argv) {
     const char *path = getenv("WXOCR_RUNTIME");

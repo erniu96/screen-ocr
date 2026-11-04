@@ -38,7 +38,7 @@ def digest(path: Path) -> str:
 @contextmanager
 def mounted_app(dmg: Path):
     if digest(dmg) != DMG_SHA256:
-        raise ValueError("DMG checksum differs from the verified WeChat 4.2.0 package")
+        raise ValueError("DMG checksum differs from the verified 4.2.0 runtime package")
     with tempfile.TemporaryDirectory(prefix="wxocr-mount-") as temp:
         mount = Path(temp) / "volume"
         mount.mkdir()
@@ -56,7 +56,7 @@ def prepare(app: Path, output: Path):
     with (contents / "Info.plist").open("rb") as file:
         info = plistlib.load(file)
     if (info["CFBundleShortVersionString"], info["CFBundleVersion"]) != ("4.2.0", "270352"):
-        raise ValueError("Only the verified WeChat 4.2.0 build 270352 is supported")
+        raise ValueError("Only the verified runtime 4.2.0 build 270352 is supported")
     for name, expected in LIBRARIES.items():
         if digest(contents / name) != expected:
             raise ValueError(f"Unrecognized engine binary: {name}")
@@ -73,7 +73,7 @@ def prepare(app: Path, output: Path):
                         str(helper), "-Wl,-rpath,@loader_path/../Frameworks", "-o", str(stage / "bin/wxocr-engine")], check=True)
         manifest = {
             "format_version": 1,
-            "engine": "WeChat macOS OCR",
+            "engine": "Third-party native macOS OCR",
             "source_version": "4.2.0",
             "source_build": "270352",
             "architecture": "arm64",
@@ -89,8 +89,8 @@ def prepare(app: Path, output: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--app", type=Path, help="Path to the verified WeChat.app (it will not be modified)")
-    source.add_argument("--dmg", type=Path, help="Existing official WeChatMac_4.2.0.dmg")
+    source.add_argument("--app", type=Path, help="Path to the verified source application (it will not be modified)")
+    source.add_argument("--dmg", type=Path, help="Existing official 4.2.0 runtime DMG")
     source.add_argument("--download", action="store_true", help="Download the pinned official 519 MiB package")
     parser.add_argument("--output", type=Path, default=Path(".runtime"))
     args = parser.parse_args()
