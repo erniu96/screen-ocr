@@ -1,6 +1,8 @@
 # screen-ocr
 
-在 Apple Silicon Mac 上原生运行 OCR，识别截图中的中文、英文和数字。提供命令行、本机 HTTP API，以及可选的 **⌥S 框选截图 → 识别 → 复制到剪贴板** 快捷键。
+在 Apple Silicon Mac 上原生运行 OCR，识别截图中的中文、英文和数字。轻量的 **Screen OCR 菜单栏 App** 提供 **⌥S 框选截图 → 识别 → 复制到剪贴板**，同时保留命令行和本机 HTTP API。
+
+菜单栏界面使用 Swift / AppKit，不需要 Hammerspoon。空闲时只有 App 常驻，Python 与 OCR 引擎在识别时按需启动。
 
 识别在本机完成，无需运行 Linux 容器。项目调用第三方 macOS ARM64 动态库和模型；仓库提供调用代码，不包含第三方动态库、模型或安装包。首次安装时，准备脚本从固定版本的上游官方安装包提取所需文件，具体来源与权属见[第三方来源说明](docs/THIRD_PARTY_NOTICES.md)。
 
@@ -10,7 +12,7 @@
 - Xcode Command Line Tools，用于编译一个很小的原生入口程序。
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)，用于管理 Python 和项目环境。
 - 首次安装可联网，预留约 2 GB 临时空间。源安装包约 519 MiB，提取后的运行时约 85 MiB。
-- 截图快捷键另外需要 [Hammerspoon](https://www.hammerspoon.org/go/)。仅识别已有图片或使用 API 时不需要它。
+- 构建菜单栏 App 需要 Swift 6 或更新版本。仅识别已有图片或使用 API 时，无需构建 App。
 
 当前实测环境为 macOS 27.0.1、ARM64、Python 3.12。其他 macOS 版本尚未完整验证；项目目前只接受 **源应用 4.2.0，build 270352** 的运行时。
 
@@ -32,6 +34,8 @@ uname -m
 ```
 
 第二条应输出 `arm64`。如果输出 `x86_64`，请先退出以 Rosetta 运行的终端。命令行工具的安装说明见 [Apple 官方文档](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools/)。
+
+需要菜单栏 App 时，再运行 `xcrun swift --version`，确认 Swift 版本至少为 6。
 
 ### 2. 安装 uv
 
@@ -104,6 +108,26 @@ uv run screen-ocr recognize tests/fixtures/chinese.png --text
 
 ## 日常使用
 
+### ⌥S 截图识别并自动复制
+
+完成上面的命令行示例后，在项目目录运行：
+
+```sh
+uv run scripts/build_macos_app.py --install --open
+```
+
+这会构建原生 App，安装到 `~/Applications/Screen OCR.app`，并记住当前 OCR 项目目录。之后可以直接从 Finder 打开 App。
+
+1. 点击菜单栏 Screen OCR 图标，或按 **⌥S（Option + S）**。
+2. 首次使用时，为 **Screen OCR** 授予屏幕录制权限。此前授予其他应用的权限不会自动转移；如果系统要求，请退出并重新打开 App。
+3. 拖动框选文字区域。出现复制成功提示后，按 **⌘V** 粘贴。
+
+截图时按 **Esc** 取消；识别期间也可从菜单取消本次任务。一次只执行一个任务，不积累等待队列。识别失败、取消或没有文字时保留原剪贴板；临时截图与文本结果在任务结束后清理。
+
+App 不使用键盘事件监听，不主动申请辅助功能权限。空闲时 Python 和模型不常驻，也无需启动 HTTP 服务。如果已有其他应用绑定 ⌥S，先停用旧绑定，再从菜单重新注册快捷键。安装、授权、目录选择和迁移步骤见[菜单栏 App 说明](docs/menu-bar-app.md)。
+
+如需继续使用已有自动化配置，可选的 [Hammerspoon 集成](integrations/hammerspoon/README.md)仍保留。
+
 ### 识别图片或复制到剪贴板
 
 把图片路径替换成你自己的文件：
@@ -135,37 +159,6 @@ uv run --project "$HOME/Projects/screen-ocr" screen-ocr recognize \
   "$HOME/Desktop/screenshot.png" \
   --runtime "$HOME/Projects/screen-ocr/.runtime" --text
 ```
-
-### ⌥S 截图识别并自动复制
-
-先完成上面的命令行示例，再配置快捷键。
-
-1. 按 [Hammerspoon 官方入门说明](https://www.hammerspoon.org/go/)下载安装，将应用放入「应用程序」并启动。
-2. 按提示授予 Hammerspoon「辅助功能」权限，并在「系统设置 → 隐私与安全性」中允许它进行屏幕录制。权限变更后如系统要求，请退出并重新启动 Hammerspoon。
-3. 在项目目录中复制模块：
-
-   ```sh
-   mkdir -p "$HOME/.hammerspoon"
-   cp -i integrations/hammerspoon/screen_ocr.lua "$HOME/.hammerspoon/screen_ocr.lua"
-   command -v uv
-   ```
-
-4. 记下最后一条命令输出的 uv **绝对路径**。点击菜单栏 Hammerspoon 图标 → **Open Config**，在现有 `init.lua` 末尾添加以下内容。保留原有配置，并把 `uvPath` 换成刚才的输出；如果项目放在别处，也修改 `projectDir`。
-
-   ```lua
-   if screenOcr then screenOcr:stop() end
-   screenOcr = require("screen_ocr").new({
-       projectDir = os.getenv("HOME") .. "/Projects/screen-ocr",
-       uvPath = "/替换为/command-v-uv/输出的绝对路径",
-   }):start()
-   ```
-
-5. 保存，点击 Hammerspoon 菜单中的 **Reload Config**。
-6. 按 **⌥S（Option + S）**，拖动框选文字区域。出现复制成功提示后，按 **⌘V** 粘贴。
-
-截图时按 **Esc** 取消。一次只执行一个任务，识别过程中再次按快捷键不会排队。临时截图在任务结束后删除；识别失败、取消或没有识别出文字时，保留原剪贴板。
-
-如果原配置已经绑定 ⌥S，请先停用重复绑定。此模块通过绝对路径运行 uv，不依赖 Hammerspoon 的 shell `PATH`。更多配置与排错见 [Hammerspoon 集成说明](integrations/hammerspoon/README.md)。
 
 ### 本机 HTTP API
 
@@ -257,15 +250,15 @@ uv run scripts/inspect_models.py .runtime/Resources
 
 **⌥S 没反应、截图失败或屏幕全黑？**
 
-确认 Hammerspoon 正在运行、配置已重新加载、没有快捷键冲突，并检查辅助功能与屏幕录制权限。通过菜单中的 **Console** 查看错误。先在终端运行示例识别，可区分运行时问题和截图配置问题。
+确认菜单栏 App 正在运行，查看菜单中的快捷键状态，并检查 Screen OCR 的屏幕录制权限。可以先从菜单点击「截图并复制」，区分快捷键冲突与截图问题。若提示 OCR 目录未准备好，重新选择项目目录，并在终端运行示例识别。
 
 **路径里有空格可以用吗？**
 
-可以。终端中的路径加双引号；Lua 配置使用完整字符串。Hammerspoon 模块直接传递参数，不拼接 shell 命令。
+可以。终端中的路径加双引号；App 通过目录选择器保存完整路径，启动子进程时直接传递参数，不拼接 shell 命令。
 
 ## 更新与卸载
 
-从旧名称版本升级时，在原项目目录执行 `git remote set-url origin https://github.com/erniu96/screen-ocr.git`，然后更新代码和环境。命令现为 `screen-ocr`，Hammerspoon 模块现为 `screen_ocr.lua`；请替换旧配置，避免重复绑定。项目目录可以保留原路径，但 Hammerspoon 的 `projectDir` 必须填写实际位置。
+从旧名称版本升级时，在原项目目录执行 `git remote set-url origin https://github.com/erniu96/screen-ocr.git`，然后更新代码和环境。命令现为 `screen-ocr`。项目目录可以保留原路径，在菜单栏 App 中选择其实际位置即可；使用 App 前请停用旧 OCR 快捷键绑定。
 
 原生入口程序也已改名。可以复用已有运行时中的第三方文件，逐个校验后重新编译入口，无需重新下载安装包：
 
@@ -273,16 +266,16 @@ uv run scripts/inspect_models.py .runtime/Resources
 uv run scripts/prepare_runtime.py --runtime .runtime --output .runtime-next
 ```
 
-确认命令成功且 `.runtime.backup` 不存在后，停止识别任务，将旧运行时备份并替换为新版本：
+确认命令成功且 `.runtime.backup` 不存在后，退出菜单栏 App 并停止正在运行的识别任务，将旧运行时备份并替换为新版本：
 
 ```sh
 mv .runtime .runtime.backup
 mv .runtime-next .runtime
 ```
 
-如果校验失败，保留旧运行时，按安装第 4 步准备固定版本的新运行时；不要跳过校验。更新 Hammerspoon 模块与配置后 Reload Config。
+如果校验失败，保留旧运行时，按安装第 4 步准备固定版本的新运行时；不要跳过校验。
 
-更新项目代码：
+更新项目代码前，先退出菜单栏 App：
 
 ```sh
 cd "$HOME/Projects/screen-ocr"
@@ -290,11 +283,25 @@ git pull --ff-only
 uv sync --locked
 ```
 
-使用 Hammerspoon 时，再执行一次模块复制并 **Reload Config**。代码更新不会自动替换 `.runtime`；只有发布说明明确要求时才重新准备运行时。
+使用菜单栏 App 时，继续运行以下命令重新构建并打开：
 
-停用快捷键：删除 `init.lua` 中本项目的配置段，点击 **Reload Config**，再删除 `~/.hammerspoon/screen_ocr.lua`。完整卸载时，先停止 HTTP 服务，再删除克隆的项目文件夹；其中的 `.venv` 和 `.runtime` 会一起删除。其他 Hammerspoon 配置无需删除。
+```sh
+uv run scripts/build_macos_app.py --install --open
+```
+
+代码更新不会自动替换 `.runtime`；只有发布说明明确要求时才重新准备运行时。移动项目目录后，应在新目录运行 `uv sync --locked --reinstall`，再在 App 中重新选择项目目录。
+
+停用快捷键：从菜单退出 App。卸载 App 时删除 `~/Applications/Screen OCR.app`；如不再使用命令行或 HTTP 服务，停止服务后可另外删除项目目录，其中的 `.venv` 和 `.runtime` 会一起删除。其他自动化配置无需删除。
 
 ## 开发与测试
+
+原生菜单栏 App 的进程管理与取消测试：
+
+```sh
+swift test --package-path apps/macos
+```
+
+Python 核心与接口测试：
 
 ```sh
 uv run python -m unittest discover -s tests -v

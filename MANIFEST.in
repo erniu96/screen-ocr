@@ -5,3 +5,7 @@ recursive-include scripts *.py *.swift
 recursive-include integrations *.lua *.md
 recursive-include tests *.py *.lua *.json *.jsonl *.png
 recursive-include src/screen_ocr/data *.json
+include apps/macos/Package.swift
+recursive-include apps/macos/Sources *.swift
+recursive-include apps/macos/Tests *.swift
+recursive-include apps/macos/Packaging *.swift *.plist

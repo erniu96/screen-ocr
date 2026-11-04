@@ -1,12 +1,14 @@
 # 架构与接口
 
-screen-ocr 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
+screen-ocr 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。Swift / AppKit 菜单栏 App 负责全局快捷键、截图和剪贴板；Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
 
 ## 请求流程
 
 ```mermaid
 flowchart LR
-    A[CLI / HTTP / Hammerspoon] --> B[NativeEngine]
+    S[Swift 菜单栏 App] -->|按需启动| A[CLI]
+    W[HTTP] --> B[NativeEngine]
+    A --> B
     B --> C[独立 Python worker]
     C --> D[libmmmojo.dylib]
     D <-->|Mojo IPC| E[ARM64 helper + libwxocr.dylib]
@@ -18,12 +20,17 @@ flowchart LR
 
 `NativeEngine` 每次创建独立进程组。原生组件的全局状态和回调不会被不同请求共享；请求结束、超时或调用方关闭引擎时，父进程负责终止并回收工作进程组。默认 90 秒的外部期限覆盖启动、握手、识别和退出。
 
-当前没有常驻模型池。`serve` 常驻的是 HTTP 层，每次请求仍启动独立引擎。CLI 与截图快捷键无需预先启动 HTTP 服务。
+当前没有常驻模型池。菜单栏 App 空闲时仅保留原生界面，Python 与模型只在识别时启动。`serve` 常驻的是 HTTP 层，每次请求仍启动独立引擎。CLI 与菜单栏 App 无需预先启动 HTTP 服务。
+
+菜单栏 App 使用 `RegisterEventHotKey` 独占注册 ⌥S，调用系统 `screencapture` 进行交互式截图，再以参数数组启动项目中的 `.venv/bin/python -m screen_ocr.cli`。它不依赖 shell PATH、Hammerspoon 或键盘监听。截图权限通过 CoreGraphics 的预检与请求接口交给系统管理。
 
 ## 文件职责
 
 | 文件 | 职责 |
 | --- | --- |
+| `apps/macos/Sources/ScreenOCRApp/` | 原生菜单栏界面、快捷键、屏幕授权、状态提示与剪贴板 |
+| `apps/macos/Sources/ScreenOCRCore/` | 项目目录检查、截图与 OCR 子进程、取消及临时文件清理 |
+| `scripts/build_macos_app.py` | 构建、打包、本机签名和安装菜单栏 App |
 | `scripts/prepare_runtime.py` | 校验固定安装包和库，提取文件，编译入口程序，生成运行时清单 |
 | `native/ocr_helper.c` | 加载指定的 OCR 动态库，调用已确认的原生入口 |
 | `src/screen_ocr/engine.py` | 进程隔离、整体超时、取消、回收及耗时测量 |
@@ -32,7 +39,7 @@ flowchart LR
 | `src/screen_ocr/layout.py` | 根据已知矩形字段排序和拼接片段 |
 | `src/screen_ocr/server.py` | 有容量限制的本机 HTTP 接口 |
 | `src/screen_ocr/cli.py` | 命令行参数、结果输出和服务生命周期 |
-| `integrations/hammerspoon/screen_ocr.lua` | 快捷键、截图、异步调用 CLI、复制与临时文件清理 |
+| `integrations/hammerspoon/screen_ocr.lua` | 可选的旧自动化集成，不是菜单栏 App 的依赖 |
 
 ## 固定运行时
 
@@ -44,7 +51,7 @@ flowchart LR
 
 `Frameworks/libwxocr.dylib` 不是本项目使用的 OCR 引擎文件。不能只凭文件名替换动态库，也不能把其他版本模型与当前引擎混用。
 
-下载地址、DMG 与动态库 SHA-256 固定在准备脚本中。准备阶段验证安装包、应用版本和库，并为输出文件生成 `runtime.json` 清单。该清单记录来源与哈希，不代表运行时目录受到防篡改保护；请使用自己准备的本地运行时。
+下载地址、DMG 与全部提取文件的 SHA-256 固定在 `src/screen_ocr/data/runtime-baseline.json` 中。准备脚本读取该基线，验证安装包、应用版本和全部文件，并为输出文件生成 `runtime.json` 清单。该清单记录来源与哈希，不代表运行时目录受到防篡改保护；请使用自己准备的本地运行时。
 
 本仓库不分发第三方二进制或模型。这里的“native”指加载 macOS ARM64 原生引擎，不表示 OCR 模型由本项目训练或以开源许可证提供。
 
@@ -112,9 +119,11 @@ PY
 
 返回对象包含 `text`、`lines`、`algorithm`、`source_fragment_count`、`output_line_count` 和 `warnings`。每行的 `source_indices` 是原始片段的 **0 起始索引**，`separators` 记录片段之间加入的分隔符，便于排查文字如何拼接。
 
-CLI 的 `--text` 和 Hammerspoon 剪贴板使用这一层；默认 JSON 和 HTTP 结果保持原始数据。
+CLI 的 `--text`、菜单栏 App 和可选自动化集成的剪贴板使用这一层；默认 JSON 和 HTTP 结果保持原始数据。
 
-Hammerspoon 使用 `--text-file` 将文本写到权限为 `0600` 的新临时文件，完成后读取并删除，避免长文本堵住任务输出管道。CLI 对 SIGINT 和 SIGTERM 执行清理；取消开始后忽略重复取消信号，确保原生工作进程组被回收。
+菜单栏 App 使用 `--text-file` 将文本写到权限为 `0600` 的新临时文件，完成后读取并删除，避免长文本堵住任务输出管道。每次任务使用独立的 `0700` 临时目录；失败、取消和空结果不会触发复制。App 的取消与正常退出会等待 CLI 清理，再释放当前任务，不会在清理期间启动新的识别。
+
+CLI 对 SIGINT 和 SIGTERM 执行清理；取消开始后忽略重复取消信号，确保原生工作进程组被回收。更多安装与操作说明见[菜单栏 App 文档](menu-bar-app.md)。
 
 ## 耗时与异常
 
