@@ -1,0 +1,6 @@
+include README.md LICENSE uv.lock .python-version
+recursive-include docs *.md
+recursive-include native *.c
+recursive-include scripts *.py *.swift
+recursive-include integrations *.lua *.md
+recursive-include tests *.py *.lua *.json *.jsonl *.png

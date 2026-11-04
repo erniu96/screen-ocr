@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wxocr-native"
+version = "0.1.0"
+description = "Run WeChat's macOS OCR engine locally through its verified Mojo protocol"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "docs/THIRD_PARTY_NOTICES.md"]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/erniu96/wxocr-native"
+Issues = "https://github.com/erniu96/wxocr-native/issues"
+
+[project.scripts]
+wxocr = "wxocr_native.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

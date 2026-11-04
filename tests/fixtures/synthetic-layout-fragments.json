@@ -1,0 +1,33 @@
+{
+  "description": "Hand-authored synthetic rectangles: twelve shuffled fragments form seven visual rows. No screenshot or captured user text is included.",
+  "result": {
+    "errcode": 0,
+    "width": 600,
+    "height": 300,
+    "ocr_response": [
+      {"text": "Public ", "left": 10, "top": 10, "right": 80, "bottom": 30, "rate": 0.9},
+      {"text": "demo", "left": 121, "top": 11, "right": 161, "bottom": 31, "rate": 0.9},
+      {"text": "OCR ", "left": 80, "top": 10, "right": 120, "bottom": 30, "rate": 0.9},
+      {"text": "line three", "left": 10, "top": 90, "right": 110, "bottom": 110, "rate": 0.9},
+      {"text": "line five", "left": 10, "top": 170, "right": 100, "bottom": 190, "rate": 0.9},
+      {"text": "line seven", "left": 10, "top": 250, "right": 110, "bottom": 270, "rate": 0.9},
+      {"text": "join quest", "left": 10, "top": 50, "right": 110, "bottom": 70, "rate": 0.9},
+      {"text": "keep raw ", "left": 10, "top": 130, "right": 100, "bottom": 150, "rate": 0.9},
+      {"text": "typo imp", "left": 10, "top": 210, "right": 90, "bottom": 230, "rate": 0.9},
+      {"text": "ions", "left": 111, "top": 50, "right": 151, "bottom": 70, "rate": 0.9},
+      {"text": "typos", "left": 101, "top": 131, "right": 151, "bottom": 151, "rate": 0.9},
+      {"text": "ove", "left": 91, "top": 211, "right": 121, "bottom": 231, "rate": 0.9}
+    ]
+  },
+  "expected_lines": [
+    "Public OCR demo",
+    "join questions",
+    "line three",
+    "keep raw typos",
+    "line five",
+    "typo impove",
+    "line seven"
+  ],
+  "expected_source_indices": [[0, 2, 1], [6, 9], [3], [7, 10], [4], [8, 11], [5]],
+  "limitations": "The intentionally misspelled impove must remain unchanged: layout reconstruction must not correct OCR characters."
+}

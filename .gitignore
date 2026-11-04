@@ -1,0 +1,17 @@
+.venv/
+.runtime/
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store
+build/
+dist/
+artifacts/
+.runtime*/
+*.dmg
+*.dylib
+*.xnet
+*.log
+.env
+.env.*
+.pytest_cache/
