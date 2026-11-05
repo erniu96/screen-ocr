@@ -4,8 +4,14 @@ import PackageDescription
 let package = Package(
     name: "ScreenOCR",
     platforms: [.macOS(.v13)],
-    products: [.executable(name: "ScreenOCR", targets: ["ScreenOCRApp"])],
+    products: [
+        .executable(name: "ScreenOCR", targets: ["ScreenOCRApp"]),
+        .executable(name: "ScreenOCRWorker", targets: ["ScreenOCRWorker"]),
+    ],
     targets: [
+        .target(name: "CMojoBridge", publicHeadersPath: "include"),
+        .target(name: "ScreenOCRRuntime"),
+        .executableTarget(name: "ScreenOCRWorker", dependencies: ["ScreenOCRRuntime", "CMojoBridge"]),
         .target(name: "ScreenOCRCore"),
         .executableTarget(
             name: "ScreenOCRApp",
@@ -17,6 +23,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "ScreenOCRCoreTests", dependencies: ["ScreenOCRCore"]),
+        .testTarget(name: "ScreenOCRRuntimeTests", dependencies: ["ScreenOCRRuntime"]),
     ],
     swiftLanguageModes: [.v5]
 )

@@ -13,9 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shortcutItem: NSMenuItem!
     private var captureItem: NSMenuItem!
     private var cancelItem: NSMenuItem!
-    private var projectItem: NSMenuItem!
     private var retryShortcutItem: NSMenuItem!
-    private var projectDirectory: URL?
     private var terminating = false
     private var shortcutStatus: OSStatus = noErr
     private var smokeReport: URL?
@@ -23,7 +21,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let normalIcon = NSImage(systemSymbolName: "text.viewfinder", accessibilityDescription: "Screen OCR")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        configureProject()
         service.onStateChange = { [weak self] state in self?.refresh(state: state) }
         if let imagePath = argument("--smoke-image"), let reportPath = argument("--smoke-report") {
             smokeReport = URL(fileURLWithPath: reportPath)
@@ -34,26 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcut.onPressed = { [weak self] in self?.startCapture() }
         registerShortcut()
         refresh(state: .idle)
-        if projectDirectory == nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.chooseProject() }
-        }
     }
 
     private func argument(_ name: String) -> String? {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: name), index + 1 < arguments.count else { return nil }
         return arguments[index + 1]
-    }
-
-    private func configureProject() {
-        let path = argument("--project-directory") ?? UserDefaults.standard.string(forKey: "projectDirectory")
-        if let path = path {
-            projectDirectory = URL(fileURLWithPath: path).standardizedFileURL
-            // A diagnostic launch must never change the user's saved setup.
-            if argument("--smoke-image") == nil, argument("--project-directory") != nil {
-                UserDefaults.standard.set(projectDirectory!.path, forKey: "projectDirectory")
-            }
-        }
     }
 
     private func menuItem(_ title: String, action: Selector? = nil, key: String = "") -> NSMenuItem {
@@ -85,8 +68,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cancelItem = menuItem("取消本次任务", action: #selector(cancelCapture))
         menu.addItem(cancelItem)
         menu.addItem(.separator())
-        projectItem = menuItem("选择 OCR 项目目录…", action: #selector(chooseProject))
-        menu.addItem(projectItem)
         menu.addItem(menuItem("屏幕录制权限…", action: #selector(screenPermission)))
         retryShortcutItem = menuItem("重新注册 ⌥S", action: #selector(registerShortcut))
         menu.addItem(retryShortcutItem)
@@ -99,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard stateItem != nil else { return }
         switch state {
         case .idle:
-            stateItem.title = projectDirectory == nil ? "请选择 OCR 项目目录" : "就绪"
+            stateItem.title = (try? configuration()) == nil ? "OCR 运行文件缺失" : "就绪"
             statusItem.button?.title = ""
         case .capturing:
             stateItem.title = "正在框选截图…"
@@ -113,8 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         captureItem.isEnabled = !service.isBusy && !terminating
         cancelItem.isEnabled = service.isBusy && state != .cancelling
-        projectItem.isEnabled = !service.isBusy && !terminating
-        projectItem.toolTip = projectDirectory?.path
         retryShortcutItem.isEnabled = shortcutStatus != noErr && !terminating
     }
 
@@ -126,21 +105,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configuration() throws -> OCRConfiguration {
-        guard let projectDirectory = projectDirectory else {
-            throw NSError(domain: "ScreenOCR", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "请先选择已完成安装的 OCR 项目目录。"])
-        }
-        let configuration = OCRConfiguration(projectDirectory: projectDirectory)
-        try configuration.validate()
-        return configuration
+        try OCRConfiguration.bundled()
     }
 
     @objc private func startCapture() {
         guard !service.isBusy, !terminating else { return }
-        guard projectDirectory != nil else { chooseProject(); return }
         let configuration: OCRConfiguration
         do { configuration = try self.configuration() }
-        catch { showError("OCR 目录尚未准备好", detail: error.localizedDescription); return }
+        catch { showError("OCR 运行文件不完整", detail: error.localizedDescription); return }
         resultPreview.hide()
         guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else {
             explainScreenPermission()
@@ -184,25 +156,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stateItem.title = "识别失败"
             showError("识别失败", detail: error.localizedDescription)
         }
-    }
-
-    @objc private func chooseProject() {
-        guard !service.isBusy else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.title = "选择 OCR 项目目录"
-        panel.message = "选择已完成安装并准备好运行文件的 screen-ocr 文件夹。"
-        panel.prompt = "使用此目录"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = projectDirectory
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try OCRConfiguration(projectDirectory: url).validate() }
-        catch { showError("这个目录尚未准备好", detail: error.localizedDescription); return }
-        projectDirectory = url.standardizedFileURL
-        UserDefaults.standard.set(projectDirectory!.path, forKey: "projectDirectory")
-        refresh(state: .idle)
     }
 
     @objc private func screenPermission() {

@@ -1,16 +1,14 @@
 # 架构与接口
 
-screen-ocr 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。Swift / AppKit 菜单栏 App 负责全局快捷键、截图和剪贴板；Python 标准库负责进程管理、Mojo 接口绑定、protobuf 编解码、文本整理和本机 HTTP 服务；一个 C 入口程序加载原生 OCR 动态库并调用其入口。
+screen-ocr 在 macOS ARM64 上加载经过验证的第三方 OCR 运行时。菜单栏 App 的界面、进程管理、protobuf 编解码和文本整理均使用 Swift；少量 C 代码桥接原生 Mojo ABI 并启动引擎。完整 App 内置本地运行文件，运行时不依赖 Python、uv、`.venv` 或源码目录。原有 Python CLI、HTTP API 和资源检查工具仍可单独使用。
 
 ## 请求流程
 
 ```mermaid
 flowchart LR
-    S[Swift 菜单栏 App] -->|按需启动| A[CLI]
-    W[HTTP] --> B[NativeEngine]
-    A --> B
-    B --> C[独立 Python worker]
-    C --> D[libmmmojo.dylib]
+    S[Swift 菜单栏 App] -->|按需启动| C[独立 Swift worker]
+    C --> B[C ABI 桥接]
+    B --> D[libmmmojo.dylib]
     D <-->|Mojo IPC| E[ARM64 helper + libwxocr.dylib]
     E --> F[本机 OCR 模型]
     C --> G[原始结构化结果]
@@ -18,19 +16,24 @@ flowchart LR
     G --> I[按坐标整理纯文本]
 ```
 
-`NativeEngine` 每次创建独立进程组。原生组件的全局状态和回调不会被不同请求共享；请求结束、超时或调用方关闭引擎时，父进程负责终止并回收工作进程组。默认 90 秒的外部期限覆盖启动、握手、识别和退出。
+Swift worker 在初始化原生组件前建立独立进程组。原生组件的全局状态和回调不会被不同请求共享；App 在取消或超时时先请求正常清理，超过 2 秒则终止整个工作进程组。工作进程退出后也会清理残留引擎子进程。工作进程自身的默认 90 秒期限覆盖启动、握手、识别和退出。
 
-当前没有常驻模型池。菜单栏 App 空闲时仅保留原生界面，Python 与模型只在识别时启动。`serve` 常驻的是 HTTP 层，每次请求仍启动独立引擎。CLI 与菜单栏 App 无需预先启动 HTTP 服务。
+当前没有常驻模型池。菜单栏 App 空闲时仅保留原生界面，Swift worker 与模型只在识别时启动。可选 Python `serve` 常驻的是 HTTP 层，每次请求仍启动独立引擎。菜单栏 App 无需启动 HTTP 服务。
 
-菜单栏 App 使用 `RegisterEventHotKey` 独占注册 ⌥S，调用系统 `screencapture` 进行交互式截图，再以参数数组启动项目中的 `.venv/bin/python -m screen_ocr.cli`。它不依赖 shell PATH、Hammerspoon 或键盘监听。截图权限通过 CoreGraphics 的预检与请求接口交给系统管理。
+菜单栏 App 使用 `RegisterEventHotKey` 独占注册 ⌥S，调用系统 `screencapture` 进行交互式截图，再以参数数组启动包内 `Contents/MacOS/ScreenOCRWorker`，运行文件位于 `Contents/Resources/Runtime`。所有路径相对于当前 App 解析，可移动安装位置；它不依赖 shell PATH、Hammerspoon 或键盘监听。截图权限通过 CoreGraphics 的预检与请求接口交给系统管理。
+
+这是本地运行版本，尚未完成 App Store 适配。引擎启动仍保留已验证的 `no-sandbox` 参数，工作进程清理使用 macOS `libproc` 枚举自己拥有的进程组；后续商店版需要重新评估这些接口、App Sandbox 与签名配置。Swift 迁移本身不代表已通过商店审核。
 
 ## 文件职责
 
 | 文件 | 职责 |
 | --- | --- |
 | `apps/macos/Sources/ScreenOCRApp/` | 原生菜单栏界面、快捷键、屏幕授权、状态提示与剪贴板 |
-| `apps/macos/Sources/ScreenOCRCore/` | 项目目录检查、截图与 OCR 子进程、取消及临时文件清理 |
-| `scripts/build_macos_app.py` | 构建、打包、本机签名和安装菜单栏 App |
+| `apps/macos/Sources/ScreenOCRCore/` | 包内运行文件检查、截图与 OCR 子进程、取消及临时文件清理 |
+| `apps/macos/Sources/ScreenOCRRuntime/` | Swift protobuf 编解码、类型定义和坐标阅读顺序整理 |
+| `apps/macos/Sources/ScreenOCRWorker/` | 单次识别的原生会话、信号处理、超时与结果输出 |
+| `apps/macos/Sources/CMojoBridge/` | 已确认的 C ABI、动态库符号和 ARM64 可变参数桥接 |
+| `scripts/build_macos_app.swift` | 校验本地资源、构建、独立打包、本机签名和安装 |
 | `scripts/prepare_runtime.py` | 校验固定安装包和库，提取文件，编译入口程序，生成运行时清单 |
 | `native/ocr_helper.c` | 加载指定的 OCR 动态库，调用已确认的原生入口 |
 | `src/screen_ocr/engine.py` | 进程隔离、整体超时、取消、回收及耗时测量 |
@@ -69,7 +72,7 @@ flowchart LR
 
 仅处理已确认的字段。未知 protobuf 字段按 wire type 跳过；不会从数值、候选名称或相似字段推测其含义。已知字段的错误 wire type、截断数据、无效 UTF-8 和数值溢出会被拒绝。
 
-## Python 接口
+## 可选 Python 接口
 
 在项目目录中运行：
 
@@ -121,9 +124,9 @@ PY
 
 CLI 的 `--text`、菜单栏 App 和可选自动化集成的剪贴板使用这一层；默认 JSON 和 HTTP 结果保持原始数据。
 
-菜单栏 App 使用 `--text-file` 将文本写到权限为 `0600` 的新临时文件，完成后读取并删除，避免长文本堵住任务输出管道。每次任务使用独立的 `0700` 临时目录；失败、取消和空结果不会触发复制。App 的取消与正常退出会等待 CLI 清理，再释放当前任务，不会在清理期间启动新的识别。
+菜单栏 App 使用 Swift worker 的 `--text-file` 将文本写到权限为 `0600` 的新临时文件，完成后读取并删除，避免长文本堵住任务输出管道。每次任务使用独立的 `0700` 临时目录；失败、取消和空结果不会触发复制。App 的取消与正常退出会等待 worker 清理，再释放当前任务，不会在清理期间启动新的识别。
 
-CLI 对 SIGINT 和 SIGTERM 执行清理；取消开始后忽略重复取消信号，确保原生工作进程组被回收。更多安装与操作说明见[菜单栏 App 文档](menu-bar-app.md)。
+Swift worker 和可选 Python CLI 都处理取消信号并清理原生进程。Swift 的协议和布局实现通过同一批捕获消息、Unicode 边界测试和真实图片与 Python 实现对照。更多安装与操作说明见[菜单栏 App 文档](menu-bar-app.md)。
 
 ## 耗时与异常
 

@@ -1,28 +1,45 @@
 import Foundation
 
 public struct OCRConfiguration: Equatable {
-    public let projectDirectory: URL
+    public let runtimeURL: URL
+    public let workerURL: URL
 
-    public init(projectDirectory: URL) {
-        self.projectDirectory = projectDirectory.standardizedFileURL
+    public init(runtimeURL: URL, workerURL: URL) {
+        self.runtimeURL = runtimeURL.standardizedFileURL
+        self.workerURL = workerURL.standardizedFileURL
     }
 
-    public var pythonURL: URL { projectDirectory.appendingPathComponent(".venv/bin/python") }
-    public var runtimeURL: URL { projectDirectory.appendingPathComponent(".runtime", isDirectory: true) }
+    public static func bundled(in bundle: Bundle = .main) throws -> OCRConfiguration {
+        guard let resources = bundle.resourceURL, let executable = bundle.executableURL else {
+            throw OCRError.configuration("无法定位 App 内的 OCR 运行文件，请重新构建完整 App。")
+        }
+        let configuration = OCRConfiguration(
+            runtimeURL: resources.appendingPathComponent("Runtime", isDirectory: true),
+            workerURL: executable.deletingLastPathComponent().appendingPathComponent("ScreenOCRWorker")
+        )
+        try configuration.validate()
+        return configuration
+    }
 
     public func validate() throws {
         var directory: ObjCBool = false
-        guard projectDirectory.isFileURL,
-              FileManager.default.fileExists(atPath: projectDirectory.path, isDirectory: &directory),
+        guard runtimeURL.isFileURL, workerURL.isFileURL,
+              FileManager.default.fileExists(atPath: runtimeURL.path, isDirectory: &directory),
               directory.boolValue else {
-            throw OCRError.configuration("请选择 screen-ocr 项目文件夹。")
+            throw OCRError.configuration("App 缺少 OCR 运行文件，请重新构建完整 App。")
         }
-        guard FileManager.default.isExecutableFile(atPath: pythonURL.path) else {
-            throw OCRError.configuration("项目缺少 Python 环境，请先在项目目录运行 uv sync --locked。")
+        guard FileManager.default.isExecutableFile(atPath: workerURL.path) else {
+            throw OCRError.configuration("App 缺少原生 OCR 工作程序，请重新构建完整 App。")
         }
-        guard FileManager.default.isExecutableFile(atPath: runtimeURL.appendingPathComponent("bin/screen-ocr-engine").path),
-              FileManager.default.fileExists(atPath: runtimeURL.appendingPathComponent("runtime.json").path) else {
-            throw OCRError.configuration("项目缺少 OCR 运行时，请先完成 README 中的运行时准备步骤。")
+        guard FileManager.default.isExecutableFile(atPath: runtimeURL.appendingPathComponent("bin/screen-ocr-engine").path) else {
+            throw OCRError.configuration("App 缺少 OCR 引擎入口，请重新构建完整 App。")
+        }
+        for path in ["Frameworks/libmmmojo.dylib", "Resources/libwxocr.dylib", "runtime.json"] {
+            let file = runtimeURL.appendingPathComponent(path)
+            let values = try? file.resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else {
+                throw OCRError.configuration("App 缺少 OCR 运行文件：\(path)。请重新构建完整 App。")
+            }
         }
     }
 }

@@ -2,28 +2,29 @@
 
 Screen OCR 是一个原生 Swift / AppKit 菜单栏应用。启动后只显示菜单栏图标，不显示 Dock 图标；按 **⌥S（Option + S）** 框选区域，识别完成后直接复制文字。
 
-App 管理快捷键、截图、任务状态和剪贴板。OCR 仍使用项目中已准备好的本地运行时；Python 与 OCR 引擎只在识别时启动，不在空闲时常驻。使用这个 App 不需要 Hammerspoon，也不需要先启动 HTTP 服务。
+App 管理快捷键、截图、任务状态和剪贴板。Swift 工作进程负责 OCR 协议通信、结果解析和阅读顺序整理，少量 C 代码连接原生引擎。运行文件随本地构建的 App 打包，启动和识别不依赖 Python、uv、`.venv`、项目目录、Hammerspoon 或 HTTP 服务。
 
 ## 安装
 
-先完成[项目 README](../README.md)中的环境和运行时准备，并确认以下命令能输出文字：
-
-```sh
-uv run screen-ocr recognize tests/fixtures/english.png --text
-```
+先准备[项目 README](../README.md)指定版本的本地运行文件。首次下载、提取的辅助脚本仍使用 Python；如果已经有 `.runtime`，无需创建 Python 环境或再下载。下面的构建、安装与 App 运行均不调用 Python。
 
 以下命令均在项目根目录执行。构建需要 Swift 6 或更新版本及 Xcode Command Line Tools；目标为 Apple Silicon Mac。App 的部署目标是 macOS 13 或更新版本，OCR 运行时的实测系统范围仍以项目 README 为准。
 
 ```sh
-uv run scripts/build_macos_app.py --install
-open "$HOME/Applications/Screen OCR.app" --args --project-directory "$PWD"
+swift scripts/build_macos_app.swift --install --open
 ```
 
-构建产物位于 `dist/Screen OCR.app`，`--install` 将应用安装到当前用户的 `~/Applications/Screen OCR.app`。应用使用本机 ad-hoc 签名，不包含第三方模型或运行库。
+构建产物位于 `dist/Screen OCR.app`，`--install` 将应用安装到当前用户的 `~/Applications/Screen OCR.app`，`--open` 在安装后启动。之后可以直接从 Finder 打开 App，无需选择项目目录。
 
-也可用 `uv run scripts/build_macos_app.py --install --open` 一次完成构建、安装并配置本次启动的项目目录。
+默认从项目的 `.runtime` 读取文件，也可以显式指定包含 `Frameworks/`、`Resources/` 的本地运行文件目录：
 
-`--project-directory` 指向已完成安装的项目目录，App 会记住这个位置。之后可以直接从 Finder 打开 `Screen OCR.app`，也可以通过菜单选择新的 OCR 项目目录。不要移动或删除这个目录中的 `.venv` 与 `.runtime`。
+```sh
+swift scripts/build_macos_app.swift --runtime "/完整路径/运行文件目录" --install --open
+```
+
+构建脚本先校验固定基线中的每个文件，再编译原生入口、复制 Swift 工作进程与模型，并为本地 App 签名。源目录不会被修改。App 中的 `Contents/Resources/Runtime/runtime.json` 分别记录原始文件的 `source_sha256` 和打包签名后的 `sha256`；动态库的签名会改变文件字节，模型内容不变。
+
+安装完成后，移动项目或移除其 `.venv` 不影响 App；再次构建时仍需要源代码和本地运行文件。仓库不包含第三方动态库、模型或完整 App 下载，构建产物只保存在本机忽略目录中。当前使用 ad-hoc 签名，尚未完成 App Store 沙盒适配、正式分发签名或公证；本地打包不代表获得第三方文件的再分发授权。
 
 ## 第一次使用
 
@@ -48,18 +49,16 @@ open "$HOME/Applications/Screen OCR.app" --args --project-directory "$PWD"
 
 快捷键冲突时，仍可通过菜单开始截图。不要同时启用两个应用的同一 OCR 快捷键。
 
-## 更新、移动项目与卸载
+## 更新与卸载
 
 更新源代码后，退出菜单栏 App，再执行：
 
 ```sh
 git pull --ff-only
-uv sync --locked
-uv run scripts/build_macos_app.py --install
-open "$HOME/Applications/Screen OCR.app"
+swift scripts/build_macos_app.swift --install --open
 ```
 
-若移动了项目目录，在新目录运行 `uv sync --locked --reinstall`，再在 App 中重新选择项目目录。虚拟环境中的可执行入口和可编辑安装会记录路径，仅修改 App 的设置不足以修复旧路径。
+脚本拒绝覆盖仍在运行的 App、符号链接或占用同一路径的其他应用，并在复制和签名校验完成后替换旧版本。更新运行文件后也需要重新构建，已安装 App 使用自己包内的副本。
 
 App 不会自动添加系统登录项。需要登录后启动时，可在 macOS 的「登录项」设置中自行添加已安装的 `Screen OCR.app`。
 
@@ -71,8 +70,8 @@ App 不会自动添加系统登录项。需要登录后启动时，可在 macOS 
 | --- | --- |
 | ⌥S 没有反应 | 检查菜单中的快捷键状态，停用冲突绑定后重新注册。也可先从菜单触发截图。 |
 | 截图失败或屏幕内容不可见 | 检查系统对 Screen OCR 的屏幕录制授权，授权变更后按系统要求重新打开 App。 |
-| 提示 OCR 目录未准备好 | 选择包含 `.venv` 与 `.runtime` 的项目根目录，先在终端运行 README 的图片识别示例。 |
-| 移动项目后识别失败 | 在新目录执行 `uv sync --locked --reinstall`，然后重新选择项目目录。 |
+| 构建时提示文件缺失或 checksum mismatch | 检查 `--runtime` 指定目录中的固定版本文件，按 README 重新准备；不要跳过校验或混用版本。 |
+| App 提示内置运行文件缺失 | 使用完整的 `Screen OCR.app`，从正确运行文件目录重新构建安装，不要单独复制内部可执行文件。 |
 | 取消后没有文字复制 | 这是预期行为，取消保留原剪贴板；等待当前任务清理结束后再截图。 |
 
 原生界面和 OCR 运行时的文件布局见[架构说明](architecture.md)。屏幕授权接口行为可参阅 Apple 的 [CGRequestScreenCaptureAccess 文档](https://developer.apple.com/documentation/coregraphics/cgrequestscreencaptureaccess())。

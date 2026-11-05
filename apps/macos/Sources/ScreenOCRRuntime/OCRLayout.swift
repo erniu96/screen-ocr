@@ -1,0 +1,227 @@
+import Foundation
+
+public enum OCRLayoutError: LocalizedError {
+    case invalidGeometry(Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidGeometry(let index): return "Fragment \(index) has a non-finite, empty or inverted rectangle"
+        }
+    }
+}
+
+/// Horizontal visual-row order, matching Python geometry_rows_v1 exactly.
+/// Coordinates determine spacing only; recognized characters are never corrected.
+public enum OCRLayout {
+    private struct Fragment {
+        let index: Int
+        let value: OCRFragment
+        var height: Double { value.bottom - value.top }
+        var centerY: Double { (value.top + value.bottom) / 2 }
+        var characterPitch: Double {
+            let units = value.text.unicodeScalars.reduce(0) { total, scalar in
+                total + (UnicodeSpacing.contains(scalar.value, in: UnicodeSpacing.combining) ? 0 :
+                         UnicodeSpacing.contains(scalar.value, in: UnicodeSpacing.wide) ? 2 : 1)
+            }
+            let pitch = (value.right - value.left) / Double(max(units, 1))
+            return min(max(pitch, height * 0.15), height * 0.9)
+        }
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        return sorted.count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+    }
+
+    private static func sameRow(_ first: Fragment, _ second: Fragment) -> Bool {
+        let height = min(first.height, second.height)
+        let overlap = min(first.value.bottom, second.value.bottom) - max(first.value.top, second.value.top)
+        return overlap >= height * 0.6 && abs(first.centerY - second.centerY) <= height * 0.5
+    }
+
+    private static func rows(_ fragments: [Fragment]) -> [[Fragment]] {
+        var rows: [[Fragment]] = []
+        let sorted = fragments.sorted {
+            ($0.centerY, $0.value.left, $0.index) < ($1.centerY, $1.value.left, $1.index)
+        }
+        for fragment in sorted {
+            var closestIndex: Int?
+            var closestDistance = Double.infinity
+            for (index, row) in rows.enumerated() where row.allSatisfy({ sameRow(fragment, $0) }) {
+                let distance = abs(fragment.centerY - median(row.map(\.centerY)))
+                // Strict inequality preserves Python's first match for tied rows.
+                if distance < closestDistance { closestIndex = index; closestDistance = distance }
+            }
+            if let index = closestIndex { rows[index].append(fragment) }
+            else { rows.append([fragment]) }
+        }
+        return rows.enumerated().sorted {
+            (median($0.element.map(\.centerY)), $0.element.map(\.value.left).min()!, $0.offset) <
+            (median($1.element.map(\.centerY)), $1.element.map(\.value.left).min()!, $1.offset)
+        }.map(\.element)
+    }
+
+    private static func separator(_ previous: Fragment, _ current: Fragment, gap: Double) -> String {
+        guard let last = previous.value.text.unicodeScalars.last,
+              let first = current.value.text.unicodeScalars.first else { return "" }
+        if UnicodeSpacing.contains(last.value, in: UnicodeSpacing.whitespace) ||
+            UnicodeSpacing.contains(first.value, in: UnicodeSpacing.whitespace) { return "" }
+        let threshold = max(min(previous.characterPitch, current.characterPitch) * 0.5,
+                            min(previous.height, current.height) * 0.12)
+        return gap >= threshold ? " " : ""
+    }
+
+    public static func reconstruct(_ response: OCRResponse) throws -> OCRLayoutResult {
+        let fragments = try response.fragments.enumerated().map { index, value -> Fragment in
+            guard [value.left, value.top, value.right, value.bottom].allSatisfy(\.isFinite),
+                  value.right > value.left, value.bottom > value.top else {
+                throw OCRLayoutError.invalidGeometry(index)
+            }
+            return Fragment(index: index, value: value)
+        }
+        var output: [OCRLayoutLine] = []
+        var warnings: Set<String> = []
+        func emit(_ group: [Fragment], _ separators: [String]) {
+            var text = group[0].value.text
+            for (separator, fragment) in zip(separators, group.dropFirst()) { text += separator + fragment.value.text }
+            output.append(OCRLayoutLine(text: text, sourceIndices: group.map(\.index), separators: separators,
+                                        left: group.map(\.value.left).min()!, top: group.map(\.value.top).min()!,
+                                        right: group.map(\.value.right).max()!, bottom: group.map(\.value.bottom).max()!))
+        }
+        for row in rows(fragments) {
+            let ordered = row.sorted {
+                ($0.value.left, $0.value.right, $0.index) < ($1.value.left, $1.value.right, $1.index)
+            }
+            var group = [ordered[0]]
+            var separators: [String] = []
+            for current in ordered.dropFirst() {
+                let previous = group.last!
+                let gap = current.value.left - previous.value.right
+                let height = min(previous.height, current.height)
+                if gap > height * 1.6 || gap < -height * 0.25 {
+                    warnings.insert(gap > 0 ? "wide_gaps_kept_separate" : "overlapping_boxes_kept_separate")
+                    emit(group, separators)
+                    group = [current]
+                    separators = []
+                } else {
+                    separators.append(separator(previous, current, gap: gap))
+                    group.append(current)
+                }
+            }
+            emit(group, separators)
+        }
+        return OCRLayoutResult(algorithm: "geometry_rows_v1", text: output.map(\.text).joined(separator: "\n"),
+                               sourceFragmentCount: fragments.count, outputLineCount: output.count,
+                               lines: output, warnings: warnings.sorted())
+    }
+}
+
+/// Generated from CPython 3.12's unicodedata 15.0.0, the existing Python
+/// implementation's Unicode database. Closed scalar ranges preserve its exact
+/// East_Asian_Width W/F, nonzero canonical combining class, and str.isspace()
+/// behavior without depending on the OS's changing Unicode version.
+private enum UnicodeSpacing {
+    static func contains(_ value: UInt32, in ranges: [UInt32]) -> Bool {
+        var lower = 0
+        var upper = ranges.count / 2
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if value < ranges[middle * 2] { upper = middle }
+            else if value > ranges[middle * 2 + 1] { lower = middle + 1 }
+            else { return true }
+        }
+        return false
+    }
+
+    static let wide: [UInt32] = [
+        0x1100, 0x115F, 0x231A, 0x231B, 0x2329, 0x232A, 0x23E9, 0x23EC,
+        0x23F0, 0x23F0, 0x23F3, 0x23F3, 0x25FD, 0x25FE, 0x2614, 0x2615,
+        0x2648, 0x2653, 0x267F, 0x267F, 0x2693, 0x2693, 0x26A1, 0x26A1,
+        0x26AA, 0x26AB, 0x26BD, 0x26BE, 0x26C4, 0x26C5, 0x26CE, 0x26CE,
+        0x26D4, 0x26D4, 0x26EA, 0x26EA, 0x26F2, 0x26F3, 0x26F5, 0x26F5,
+        0x26FA, 0x26FA, 0x26FD, 0x26FD, 0x2705, 0x2705, 0x270A, 0x270B,
+        0x2728, 0x2728, 0x274C, 0x274C, 0x274E, 0x274E, 0x2753, 0x2755,
+        0x2757, 0x2757, 0x2795, 0x2797, 0x27B0, 0x27B0, 0x27BF, 0x27BF,
+        0x2B1B, 0x2B1C, 0x2B50, 0x2B50, 0x2B55, 0x2B55, 0x2E80, 0x2E99,
+        0x2E9B, 0x2EF3, 0x2F00, 0x2FD5, 0x2FF0, 0x2FFB, 0x3000, 0x303E,
+        0x3041, 0x3096, 0x3099, 0x30FF, 0x3105, 0x312F, 0x3131, 0x318E,
+        0x3190, 0x31E3, 0x31F0, 0x321E, 0x3220, 0x3247, 0x3250, 0x4DBF,
+        0x4E00, 0xA48C, 0xA490, 0xA4C6, 0xA960, 0xA97C, 0xAC00, 0xD7A3,
+        0xF900, 0xFAFF, 0xFE10, 0xFE19, 0xFE30, 0xFE52, 0xFE54, 0xFE66,
+        0xFE68, 0xFE6B, 0xFF01, 0xFF60, 0xFFE0, 0xFFE6, 0x16FE0, 0x16FE4,
+        0x16FF0, 0x16FF1, 0x17000, 0x187F7, 0x18800, 0x18CD5, 0x18D00, 0x18D08,
+        0x1AFF0, 0x1AFF3, 0x1AFF5, 0x1AFFB, 0x1AFFD, 0x1AFFE, 0x1B000, 0x1B122,
+        0x1B132, 0x1B132, 0x1B150, 0x1B152, 0x1B155, 0x1B155, 0x1B164, 0x1B167,
+        0x1B170, 0x1B2FB, 0x1F004, 0x1F004, 0x1F0CF, 0x1F0CF, 0x1F18E, 0x1F18E,
+        0x1F191, 0x1F19A, 0x1F200, 0x1F202, 0x1F210, 0x1F23B, 0x1F240, 0x1F248,
+        0x1F250, 0x1F251, 0x1F260, 0x1F265, 0x1F300, 0x1F320, 0x1F32D, 0x1F335,
+        0x1F337, 0x1F37C, 0x1F37E, 0x1F393, 0x1F3A0, 0x1F3CA, 0x1F3CF, 0x1F3D3,
+        0x1F3E0, 0x1F3F0, 0x1F3F4, 0x1F3F4, 0x1F3F8, 0x1F43E, 0x1F440, 0x1F440,
+        0x1F442, 0x1F4FC, 0x1F4FF, 0x1F53D, 0x1F54B, 0x1F54E, 0x1F550, 0x1F567,
+        0x1F57A, 0x1F57A, 0x1F595, 0x1F596, 0x1F5A4, 0x1F5A4, 0x1F5FB, 0x1F64F,
+        0x1F680, 0x1F6C5, 0x1F6CC, 0x1F6CC, 0x1F6D0, 0x1F6D2, 0x1F6D5, 0x1F6D7,
+        0x1F6DC, 0x1F6DF, 0x1F6EB, 0x1F6EC, 0x1F6F4, 0x1F6FC, 0x1F7E0, 0x1F7EB,
+        0x1F7F0, 0x1F7F0, 0x1F90C, 0x1F93A, 0x1F93C, 0x1F945, 0x1F947, 0x1F9FF,
+        0x1FA70, 0x1FA7C, 0x1FA80, 0x1FA88, 0x1FA90, 0x1FABD, 0x1FABF, 0x1FAC5,
+        0x1FACE, 0x1FADB, 0x1FAE0, 0x1FAE8, 0x1FAF0, 0x1FAF8, 0x20000, 0x2FFFD,
+        0x30000, 0x3FFFD,
+    ]
+
+    static let combining: [UInt32] = [
+        0x300, 0x34E, 0x350, 0x36F, 0x483, 0x487, 0x591, 0x5BD,
+        0x5BF, 0x5BF, 0x5C1, 0x5C2, 0x5C4, 0x5C5, 0x5C7, 0x5C7,
+        0x610, 0x61A, 0x64B, 0x65F, 0x670, 0x670, 0x6D6, 0x6DC,
+        0x6DF, 0x6E4, 0x6E7, 0x6E8, 0x6EA, 0x6ED, 0x711, 0x711,
+        0x730, 0x74A, 0x7EB, 0x7F3, 0x7FD, 0x7FD, 0x816, 0x819,
+        0x81B, 0x823, 0x825, 0x827, 0x829, 0x82D, 0x859, 0x85B,
+        0x898, 0x89F, 0x8CA, 0x8E1, 0x8E3, 0x8FF, 0x93C, 0x93C,
+        0x94D, 0x94D, 0x951, 0x954, 0x9BC, 0x9BC, 0x9CD, 0x9CD,
+        0x9FE, 0x9FE, 0xA3C, 0xA3C, 0xA4D, 0xA4D, 0xABC, 0xABC,
+        0xACD, 0xACD, 0xB3C, 0xB3C, 0xB4D, 0xB4D, 0xBCD, 0xBCD,
+        0xC3C, 0xC3C, 0xC4D, 0xC4D, 0xC55, 0xC56, 0xCBC, 0xCBC,
+        0xCCD, 0xCCD, 0xD3B, 0xD3C, 0xD4D, 0xD4D, 0xDCA, 0xDCA,
+        0xE38, 0xE3A, 0xE48, 0xE4B, 0xEB8, 0xEBA, 0xEC8, 0xECB,
+        0xF18, 0xF19, 0xF35, 0xF35, 0xF37, 0xF37, 0xF39, 0xF39,
+        0xF71, 0xF72, 0xF74, 0xF74, 0xF7A, 0xF7D, 0xF80, 0xF80,
+        0xF82, 0xF84, 0xF86, 0xF87, 0xFC6, 0xFC6, 0x1037, 0x1037,
+        0x1039, 0x103A, 0x108D, 0x108D, 0x135D, 0x135F, 0x1714, 0x1715,
+        0x1734, 0x1734, 0x17D2, 0x17D2, 0x17DD, 0x17DD, 0x18A9, 0x18A9,
+        0x1939, 0x193B, 0x1A17, 0x1A18, 0x1A60, 0x1A60, 0x1A75, 0x1A7C,
+        0x1A7F, 0x1A7F, 0x1AB0, 0x1ABD, 0x1ABF, 0x1ACE, 0x1B34, 0x1B34,
+        0x1B44, 0x1B44, 0x1B6B, 0x1B73, 0x1BAA, 0x1BAB, 0x1BE6, 0x1BE6,
+        0x1BF2, 0x1BF3, 0x1C37, 0x1C37, 0x1CD0, 0x1CD2, 0x1CD4, 0x1CE0,
+        0x1CE2, 0x1CE8, 0x1CED, 0x1CED, 0x1CF4, 0x1CF4, 0x1CF8, 0x1CF9,
+        0x1DC0, 0x1DFF, 0x20D0, 0x20DC, 0x20E1, 0x20E1, 0x20E5, 0x20F0,
+        0x2CEF, 0x2CF1, 0x2D7F, 0x2D7F, 0x2DE0, 0x2DFF, 0x302A, 0x302F,
+        0x3099, 0x309A, 0xA66F, 0xA66F, 0xA674, 0xA67D, 0xA69E, 0xA69F,
+        0xA6F0, 0xA6F1, 0xA806, 0xA806, 0xA82C, 0xA82C, 0xA8C4, 0xA8C4,
+        0xA8E0, 0xA8F1, 0xA92B, 0xA92D, 0xA953, 0xA953, 0xA9B3, 0xA9B3,
+        0xA9C0, 0xA9C0, 0xAAB0, 0xAAB0, 0xAAB2, 0xAAB4, 0xAAB7, 0xAAB8,
+        0xAABE, 0xAABF, 0xAAC1, 0xAAC1, 0xAAF6, 0xAAF6, 0xABED, 0xABED,
+        0xFB1E, 0xFB1E, 0xFE20, 0xFE2F, 0x101FD, 0x101FD, 0x102E0, 0x102E0,
+        0x10376, 0x1037A, 0x10A0D, 0x10A0D, 0x10A0F, 0x10A0F, 0x10A38, 0x10A3A,
+        0x10A3F, 0x10A3F, 0x10AE5, 0x10AE6, 0x10D24, 0x10D27, 0x10EAB, 0x10EAC,
+        0x10EFD, 0x10EFF, 0x10F46, 0x10F50, 0x10F82, 0x10F85, 0x11046, 0x11046,
+        0x11070, 0x11070, 0x1107F, 0x1107F, 0x110B9, 0x110BA, 0x11100, 0x11102,
+        0x11133, 0x11134, 0x11173, 0x11173, 0x111C0, 0x111C0, 0x111CA, 0x111CA,
+        0x11235, 0x11236, 0x112E9, 0x112EA, 0x1133B, 0x1133C, 0x1134D, 0x1134D,
+        0x11366, 0x1136C, 0x11370, 0x11374, 0x11442, 0x11442, 0x11446, 0x11446,
+        0x1145E, 0x1145E, 0x114C2, 0x114C3, 0x115BF, 0x115C0, 0x1163F, 0x1163F,
+        0x116B6, 0x116B7, 0x1172B, 0x1172B, 0x11839, 0x1183A, 0x1193D, 0x1193E,
+        0x11943, 0x11943, 0x119E0, 0x119E0, 0x11A34, 0x11A34, 0x11A47, 0x11A47,
+        0x11A99, 0x11A99, 0x11C3F, 0x11C3F, 0x11D42, 0x11D42, 0x11D44, 0x11D45,
+        0x11D97, 0x11D97, 0x11F41, 0x11F42, 0x16AF0, 0x16AF4, 0x16B30, 0x16B36,
+        0x16FF0, 0x16FF1, 0x1BC9E, 0x1BC9E, 0x1D165, 0x1D169, 0x1D16D, 0x1D172,
+        0x1D17B, 0x1D182, 0x1D185, 0x1D18B, 0x1D1AA, 0x1D1AD, 0x1D242, 0x1D244,
+        0x1E000, 0x1E006, 0x1E008, 0x1E018, 0x1E01B, 0x1E021, 0x1E023, 0x1E024,
+        0x1E026, 0x1E02A, 0x1E08F, 0x1E08F, 0x1E130, 0x1E136, 0x1E2AE, 0x1E2AE,
+        0x1E2EC, 0x1E2EF, 0x1E4EC, 0x1E4EF, 0x1E8D0, 0x1E8D6, 0x1E944, 0x1E94A,
+    ]
+
+    static let whitespace: [UInt32] = [
+        0x9, 0xD, 0x1C, 0x20, 0x85, 0x85, 0xA0, 0xA0,
+        0x1680, 0x1680, 0x2000, 0x200A, 0x2028, 0x2029, 0x202F, 0x202F,
+        0x205F, 0x205F, 0x3000, 0x3000,
+    ]
+}

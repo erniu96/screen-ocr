@@ -2,7 +2,7 @@
 
 在 Apple Silicon Mac 上原生运行 OCR，识别截图中的中文、英文和数字。轻量的 **Screen OCR 菜单栏 App** 提供 **⌥S 框选截图 → 识别 → 复制到剪贴板**，同时保留命令行和本机 HTTP API。
 
-菜单栏界面使用 Swift / AppKit，不需要 Hammerspoon。空闲时只有 App 常驻，Python 与 OCR 引擎在识别时按需启动。
+菜单栏界面和 OCR 调用使用 Swift / AppKit，少量 C 代码连接原生引擎。构建后的 App 包含所需运行文件，不依赖 Python、uv、`.venv`、项目目录或 Hammerspoon；空闲时只有 App 常驻，OCR 工作进程按需启动。Python 命令行和 HTTP 接口仍作为可选工具保留。
 
 识别在本机完成，无需运行 Linux 容器。项目调用第三方 macOS ARM64 动态库和模型；仓库提供调用代码，不包含第三方动态库、模型或安装包。首次安装时，准备脚本从固定版本的上游官方安装包提取所需文件，具体来源与权属见[第三方来源说明](docs/THIRD_PARTY_NOTICES.md)。
 
@@ -10,11 +10,13 @@
 
 - **Apple Silicon Mac**（M 系列芯片）。Intel Mac 和通过 Rosetta 运行的 x86_64 Python 不受支持。
 - Xcode Command Line Tools，用于编译一个很小的原生入口程序。
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)，用于管理 Python 和项目环境。
+- 首次运行文件准备脚本、可选 Python 命令行和 HTTP 接口使用 [uv](https://docs.astral.sh/uv/getting-started/installation/)；构建后 App 的运行不需要它。
 - 首次安装可联网，预留约 2 GB 临时空间。源安装包约 519 MiB，提取后的运行时约 85 MiB。
 - 构建菜单栏 App 需要 Swift 6 或更新版本。仅识别已有图片或使用 API 时，无需构建 App。
 
-当前实测环境为 macOS 27.0.1、ARM64、Python 3.12。其他 macOS 版本尚未完整验证；项目目前只接受 **源应用 4.2.0，build 270352** 的运行时。
+当前实测环境为 macOS 27.0.1、ARM64；可选 Python 工具使用 Python 3.12。其他 macOS 版本尚未完整验证；项目目前只接受 **源应用 4.2.0，build 270352** 的运行时。
+
+已经准备好 `.runtime` 时，可以直接用 `swift scripts/build_macos_app.swift --install --open` 构建独立 App，跳过下面的 Python 环境和下载步骤。构建脚本会重新校验原始库与模型，不需要沿用旧的 Python 环境。
 
 ## 一步一步安装
 
@@ -90,7 +92,9 @@ uv run scripts/prepare_runtime.py --app "/完整路径/源应用.app"
 
 版本、build 或动态库校验不匹配时脚本会拒绝继续；不要用其他版本文件混合替换 `.runtime`。
 
-### 5. 识别仓库里的示例图片
+### 5. 可选：验证 Python 命令行识别
+
+只使用独立 App 时，可以直接继续下面的 Swift 构建步骤。需要命令行或 HTTP 接口时，先验证示例图片：
 
 ```sh
 uv run screen-ocr recognize tests/fixtures/english.png --text
@@ -110,13 +114,13 @@ uv run screen-ocr recognize tests/fixtures/chinese.png --text
 
 ### ⌥S 截图识别并自动复制
 
-完成上面的命令行示例后，在项目目录运行：
+准备好本地运行文件后，在项目目录运行：
 
 ```sh
-uv run scripts/build_macos_app.py --install --open
+swift scripts/build_macos_app.swift --install --open
 ```
 
-这会构建原生 App，安装到 `~/Applications/Screen OCR.app`，并记住当前 OCR 项目目录。之后可以直接从 Finder 打开 App。
+这会将 Swift 工作进程和本地运行文件打包到原生 App，安装到 `~/Applications/Screen OCR.app`。之后直接从 Finder 打开即可，不再选择项目目录，移动项目或删除其 `.venv` 不影响已安装的 App。构建时可用 `--runtime "/完整路径/运行文件目录"` 指定其他本地源目录。
 
 1. 点击菜单栏 Screen OCR 图标，或按 **⌥S（Option + S）**。
 2. 首次使用时，为 **Screen OCR** 授予屏幕录制权限。此前授予其他应用的权限不会自动转移；如果系统要求，请退出并重新打开 App。
@@ -124,11 +128,13 @@ uv run scripts/build_macos_app.py --install --open
 
 截图时按 **Esc** 取消；识别期间也可从菜单取消本次任务。一次只执行一个任务，不积累等待队列。识别失败、取消或没有文字时保留原剪贴板；临时截图与文本结果在任务结束后清理。
 
-App 不使用键盘事件监听，不主动申请辅助功能权限。空闲时 Python 和模型不常驻，也无需启动 HTTP 服务。如果已有其他应用绑定 ⌥S，先停用旧绑定，再从菜单重新注册快捷键。安装、授权、目录选择和迁移步骤见[菜单栏 App 说明](docs/menu-bar-app.md)。
+App 不使用键盘事件监听，不主动申请辅助功能权限。空闲时模型不常驻，也无需启动 HTTP 服务。如果已有其他应用绑定 ⌥S，先停用旧绑定，再从菜单重新注册快捷键。安装、授权和迁移步骤见[菜单栏 App 说明](docs/menu-bar-app.md)。
+
+完整 App 只在本机构建，第三方动态库和模型不提交到仓库。当前是本机 ad-hoc 签名，尚未完成 App Store 沙盒适配、正式分发签名或公证；打包不代表获得第三方文件的再分发授权。
 
 如需继续使用已有自动化配置，可选的 [Hammerspoon 集成](integrations/hammerspoon/README.md)仍保留。
 
-### 识别图片或复制到剪贴板
+### 可选：Python 命令行识别图片或复制到剪贴板
 
 把图片路径替换成你自己的文件：
 
@@ -250,17 +256,19 @@ uv run scripts/inspect_models.py .runtime/Resources
 
 **⌥S 没反应、截图失败或屏幕全黑？**
 
-确认菜单栏 App 正在运行，查看菜单中的快捷键状态，并检查 Screen OCR 的屏幕录制权限。可以先从菜单点击「截图并复制」，区分快捷键冲突与截图问题。若提示 OCR 目录未准备好，重新选择项目目录，并在终端运行示例识别。
+确认菜单栏 App 正在运行，查看菜单中的快捷键状态，并检查 Screen OCR 的屏幕录制权限。可以先从菜单点击「截图并复制」，区分快捷键冲突与截图问题。若提示内置运行文件缺失，从正确运行文件目录重新构建并安装完整 App。
 
 **路径里有空格可以用吗？**
 
-可以。终端中的路径加双引号；App 通过目录选择器保存完整路径，启动子进程时直接传递参数，不拼接 shell 命令。
+可以。终端中的路径加双引号；App 根据自身位置定位内置运行文件，启动子进程时直接传递参数，不拼接 shell 命令。
 
 ## 更新与卸载
 
-从旧名称版本升级时，在原项目目录执行 `git remote set-url origin https://github.com/erniu96/screen-ocr.git`，然后更新代码和环境。命令现为 `screen-ocr`。项目目录可以保留原路径，在菜单栏 App 中选择其实际位置即可；使用 App 前请停用旧 OCR 快捷键绑定。
+从旧名称版本升级时，在原项目目录执行 `git remote set-url origin https://github.com/erniu96/screen-ocr.git`，然后更新代码。Python 命令现为 `screen-ocr`。项目目录可以保留原路径；独立 App 构建后无需记住它。使用 App 前请停用旧 OCR 快捷键绑定。
 
-原生入口程序也已改名。可以复用已有运行时中的第三方文件，逐个校验后重新编译入口，无需重新下载安装包：
+独立 App 的 Swift 构建脚本会校验已有运行文件并重新编译入口，无需手动迁移旧入口或重新下载安装包。
+
+如果还使用可选的 Python 命令行或 HTTP 工具，旧版原生入口程序也需要迁移。可以复用已有运行时中的第三方文件，逐个校验后重新编译入口：
 
 ```sh
 uv run scripts/prepare_runtime.py --runtime .runtime --output .runtime-next
@@ -280,22 +288,23 @@ mv .runtime-next .runtime
 ```sh
 cd "$HOME/Projects/screen-ocr"
 git pull --ff-only
-uv sync --locked
 ```
 
 使用菜单栏 App 时，继续运行以下命令重新构建并打开：
 
 ```sh
-uv run scripts/build_macos_app.py --install --open
+swift scripts/build_macos_app.swift --install --open
 ```
 
-代码更新不会自动替换 `.runtime`；只有发布说明明确要求时才重新准备运行时。移动项目目录后，应在新目录运行 `uv sync --locked --reinstall`，再在 App 中重新选择项目目录。
+代码更新不会自动替换 `.runtime`；只有发布说明明确要求时才重新准备运行时。已安装 App 使用包内的副本，更新运行文件后需要重新构建。移动项目目录不影响已安装的独立 App。
+
+继续使用可选 Python 命令行或 HTTP 工具时，更新代码后运行 `uv sync --locked`；移动项目目录后改为运行 `uv sync --locked --reinstall`。
 
 停用快捷键：从菜单退出 App。卸载 App 时删除 `~/Applications/Screen OCR.app`；如不再使用命令行或 HTTP 服务，停止服务后可另外删除项目目录，其中的 `.venv` 和 `.runtime` 会一起删除。其他自动化配置无需删除。
 
 ## 开发与测试
 
-原生菜单栏 App 的进程管理与取消测试：
+原生菜单栏 App、Swift 协议编解码、阅读顺序与进程管理测试：
 
 ```sh
 swift test --package-path apps/macos

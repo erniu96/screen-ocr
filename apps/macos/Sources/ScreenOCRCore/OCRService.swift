@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Owns a single capture/recognition job. All observable state and callbacks
 /// run on the main actor; native inference stays in an isolated CLI process.
@@ -20,6 +21,7 @@ public final class OCRService {
         var errorLog: URL?
         var cancellation: Cancellation?
         var timeout: DispatchWorkItem?
+        var escalation: DispatchWorkItem?
 
         init(configuration: OCRConfiguration, directory: URL, image: URL?, completion: @escaping (Result<OCRResult, Error>) -> Void) {
             self.configuration = configuration
@@ -36,6 +38,7 @@ public final class OCRService {
 
         func cleanUp() {
             timeout?.cancel()
+            escalation?.cancel()
             closeLogs()
             try? FileManager.default.removeItem(at: directory)
         }
@@ -114,7 +117,7 @@ public final class OCRService {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
-        process.currentDirectoryURL = job.configuration.projectDirectory
+        process.currentDirectoryURL = job.directory
         process.standardInput = FileHandle.nullDevice
         // Use files rather than pipes: OCR can return arbitrarily long Unicode
         // text, and a subprocess must never wait for the UI to drain a pipe.
@@ -154,17 +157,24 @@ public final class OCRService {
     }
 
     private func recognize(_ job: Job) throws {
-        try launch(job, executable: job.configuration.pythonURL,
-                   arguments: ["-m", "screen_ocr.cli", "recognize", job.image.path,
-                               "--runtime", job.configuration.runtimeURL.path,
-                               "--text-file", job.result.path], stage: .recognizing)
+        try launch(job, executable: job.configuration.workerURL,
+                   arguments: ["--runtime", job.configuration.runtimeURL.path,
+                               "--image", job.image.path,
+                               "--text-file", job.result.path,
+                               "--timeout", String(min(90, recognitionTimeout))], stage: .recognizing)
     }
 
     private func exited(_ job: Job, process: Process, stage: OCRState) {
         guard self.job === job, job.process === process else { return }
+        if stage == .recognizing {
+            // The native worker creates its own group before loading the engine.
+            // Also remove descendants left by an abnormal worker exit.
+            terminateWorkerGroup(process.processIdentifier)
+        }
         job.process = nil
         job.closeLogs()
         job.timeout?.cancel()
+        job.escalation?.cancel()
         if let cancellation = job.cancellation {
             finish(job, cancellation == .timeout ? .failure(OCRError.timeout) : .success(.cancelled))
             return
@@ -181,8 +191,13 @@ public final class OCRService {
                 do { try recognize(job) }
                 catch { finish(job, .failure(error)) }
             }
+        } else if process.terminationReason == .exit && process.terminationStatus == 124 {
+            finish(job, .failure(OCRError.timeout))
         } else if process.terminationStatus != 0 {
-            finish(job, .failure(OCRError.recognition(detail)))
+            let explanation = detail.isEmpty
+                ? "OCR 工作进程\(process.terminationReason == .uncaughtSignal ? "被信号终止" : "退出")（\(process.terminationStatus)）。"
+                : detail
+            finish(job, .failure(OCRError.recognition(explanation)))
         } else {
             do {
                 let values = try job.result.resourceValues(forKeys: [.isRegularFileKey])
@@ -215,9 +230,26 @@ public final class OCRService {
         }
         if wasCapturing { process.terminate() }
         else { process.interrupt() }
-        // Keep ownership until the CLI exits: its signal handler reaps the
-        // detached native worker group. Killing only this parent would orphan
-        // the engine. The CLI independently enforces its 90-second deadline.
+        // Allow native shutdown to finish, then bound even a stuck native call.
+        // Kill the whole isolated worker group, never just its parent process.
+        let escalation = DispatchWorkItem { [weak self, weak job, weak process] in
+            guard let self, let job, let process,
+                  self.job === job, job.process === process, process.isRunning else { return }
+            if !wasCapturing { self.terminateWorkerGroup(process.processIdentifier) }
+            if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+        }
+        job.escalation = escalation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: escalation)
+    }
+
+    private func terminateWorkerGroup(_ pid: pid_t) {
+        guard pid > 1, pid != Darwin.getpgrp() else { return }
+        let group = Darwin.getpgid(pid)
+        // A live worker must own the group; a reaped worker may have left a
+        // group bearing its PID. Never signal a live worker's inherited group.
+        if group == pid || (group == -1 && errno == ESRCH) {
+            Darwin.kill(-pid, SIGKILL)
+        }
     }
 
     private func finish(_ job: Job, _ result: Result<OCRResult, Error>) {
